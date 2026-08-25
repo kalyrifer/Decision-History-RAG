@@ -1,0 +1,80 @@
+# Golden set для оценки Decision History RAG.
+# Статус каждого вопроса: draft (черновик, якоря подтверждены поиском, ответ нужно
+# сверить при чтении тредов в ходе Фазы 6) | verified (проверено вручную).
+# expected_anchors — сущности, которые ДОЛЖНА находить система (recall@10 по ним считается в Фазе 6).
+
+- id: G01
+  question: "Почему ядро pydantic переписали с Cython на Rust в версии 2?"
+  expected_anchors:
+    - {type: issue, number: 2276, url: "https://github.com/pydantic/pydantic/issues/2276"}
+    - {type: issue, number: 4790, url: "https://github.com/pydantic/pydantic/issues/4790"}
+  expected_answer_summary: >-
+    Cython-сборки были громоздкими (проблемы с флагами компиляции и размером), при v2 ядро
+    выделили в отдельный пакет pydantic-core на Rust ради скорости валидации; обязательность
+    Rust-компонента вызывала споры (портативность, Lambda), но выбор остался из-за производительности.
+  status: draft
+
+- id: G02
+  question: "Почему pydantic не использует строгий режим валидации по умолчанию?"
+  expected_anchors:
+    - {type: issue, number: 578, url: "https://github.com/pydantic/pydantic/issues/578"}
+    - {type: issue, number: 1098, url: "https://github.com/pydantic/pydantic/issues/1098"}
+  expected_answer_summary: >-
+    Сознательная философия проекта: lax-режим по умолчанию ради удобства работы с реальными данными,
+    strict доступен как конфигурация (#1098); позиция зафиксирована в раннем issue о назначении pydantic (#578).
+  status: draft
+
+- id: G03
+  question: "Почему в pydantic v2 перестали автоматически приводить int к str при валидации?"
+  expected_anchors:
+    - {type: issue, number: 6045, url: "https://github.com/pydantic/pydantic/issues/6045"}
+  expected_answer_summary: >-
+    В v2 пересмотрели lax-конверсии: int->str признан источником тихих ошибок и убран из
+    дефолтного поведения; обсуждение последствий и мотивации в #6045.
+  status: draft
+
+- id: G04
+  question: "Как и почему в pydantic появились discriminated unions?"
+  expected_anchors:
+    - {type: issue, number: 619, url: "https://github.com/pydantic/pydantic/issues/619"}
+  expected_answer_summary: >-
+    Запрос пришёл из потребности валидировать union-типы по тегу как в OpenAPI 3 (#619, долгий тред);
+    дизайн обсуждался годами, реализовано через Literal/Discriminator в v2.
+  status: draft
+
+- id: G05
+  question: "Почему из pydantic v2 убрали copy_on_model_validation?"
+  expected_anchors:
+    - {type: issue, number: 4092, url: "https://github.com/pydantic/pydantic/issues/4092"}
+    - {type: issue, number: 7608, url: "https://github.com/pydantic/pydantic/issues/7608"}
+  expected_answer_summary: >-
+    Поведение копирования при валидации вложенных моделей вызывало путаницу и баги (unexpected deep copies);
+    в v2 семантику упростили (модели переиспользуются как есть), что отразили в migration guide (#7608 — жалоба на неполноту документирования).
+  status: draft
+
+- id: G06
+  question: "Почему .dict() ограничен JSON-совместимыми значениями и почему появился model_dump()?"
+  expected_anchors:
+    - {type: issue, number: 1409, url: "https://github.com/pydantic/pydantic/issues/1409"}
+  expected_answer_summary: >-
+    Требование сериализуемости результата dict() конфликтовало с желанием сохранять произвольные Python-объекты (#1409);
+    в v2 развели model_dump()/model_dump_json() с явным режимом python/json.
+  status: draft
+
+- id: G07
+  question: "Как pydantic решил проблему PEP 563 (postponed annotations) и почему именно так?"
+  expected_anchors:
+    - {type: issue, number: 2678, url: "https://github.com/pydantic/pydantic/issues/2678"}
+  expected_answer_summary: >-
+    Постponed evaluation ломал интроспекцию аннотаций; позиция мейнтейнеров — работать через
+    resolve_annotations и требовать локальные ссылки, аргументация в длинном треде #2678.
+  status: draft
+
+- id: G08
+  question: "Зачем в pydantic отдельный StrictBool — чем обычный bool не устроил?"
+  expected_anchors:
+    - {type: issue, number: 579, url: "https://github.com/pydantic/pydantic/issues/579"}
+  expected_answer_summary: >-
+    bool в Python является подклассом int, из-за чего lax-валидация пропускала числа там, где ожидался флаг;
+    StrictBool отделил настоящие boolean от числовых (#579).
+  status: draft

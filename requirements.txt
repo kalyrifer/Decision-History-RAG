@@ -1,0 +1,7 @@
+httpx
+psycopg[binary]
+pgvector
+python-dotenv
+pyyaml
+GitPython
+sentence-transformers
