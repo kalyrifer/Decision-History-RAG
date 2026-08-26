@@ -317,7 +317,7 @@ def _single_conn_query(gql_kind: str, number: int, expr: str) -> str:
         + f'repository(owner:"{OWNER}",name:"{NAME}")'
         + "{"
         + f"{gql_kind}(number:{number})"
-        + "{" + expr + "}}"
+        + "{" + expr + "}}}"
     )
 
 
@@ -371,15 +371,19 @@ def _parse_detail(kind: str, number: int, merged: bool, node: dict, client: http
         "timeline_total": tt,
     }
     if kind == "pr" and merged:
-        commits, kt, khn, kcur = _conn("commits", "")[1](node["commits"])
-        if khn:
-            commits, _ = paginate_overflow(client, gql_kind, number, "commits", commits, kt, khn, kcur)
-        reviews, rt, rhn, rcur = _conn("reviews", "")[1](node["reviews"])
-        if rhn:
-            reviews, _ = paginate_overflow(client, gql_kind, number, "reviews", reviews, rt, rhn, rcur)
-        rec["commits"] = commits
-        rec["reviews"] = reviews
-        rec["reviews_total"] = rt
+        commits_node = node.get("commits")
+        reviews_node = node.get("reviews")
+        if commits_node is not None:
+            commits, kt, khn, kcur = _conn("commits", "")[1](commits_node)
+            if khn:
+                commits, _ = paginate_overflow(client, gql_kind, number, "commits", commits, kt, khn, kcur)
+            rec["commits"] = commits
+        if reviews_node is not None:
+            reviews, rt, rhn, rcur = _conn("reviews", "")[1](reviews_node)
+            if rhn:
+                reviews, _ = paginate_overflow(client, gql_kind, number, "reviews", reviews, rt, rhn, rcur)
+            rec["reviews"] = reviews
+            rec["reviews_total"] = rt
     return rec
 
 
@@ -421,7 +425,7 @@ def run_details(client: httpx.Client, max_batches: int | None = None) -> None:
                 log(f"достигнут лимит --max-batches={max_batches}, стоп (чекпоинт сохранён)")
                 return
             chunk = queue[d[idx_key]: d[idx_key] + batch_size]
-            entries = [(f"a{i}", gql_kind, n, stage_name == "pr_merged") for i, n in enumerate(chunk)]
+            entries = [(f"a{i}", kind_for_rec, n, stage_name == "pr_merged") for i, n in enumerate(chunk)]
             est = (2 if stage_name != "pr_merged" else 5) * len(chunk) + 3
             ensure_budget(est)
             query = _build_batch_query(entries)

@@ -67,6 +67,25 @@ def cmd_status(_args) -> None:
     print(f"  обновлён: {cp['updated_at']}")
 
 
+def cmd_chunks(_args) -> None:
+    from represent import to_text
+
+    to_text.main()
+
+
+def cmd_embed(_args) -> None:
+    from represent import embed
+
+    embed.main()
+
+
+def cmd_normalize(_args) -> None:
+    from normalize import extract_relations, parse_raw
+
+    parse_raw.main()
+    extract_relations.main()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="cli.py", description="Decision History RAG")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -75,6 +94,9 @@ def main() -> None:
     p_det = sub.add_parser("ingest-details", help="комментарии/timeline/ревью по батчам")
     p_det.add_argument("--max-batches", type=int, default=None)
     p_det.set_defaults(func=cmd_ingest_details)
+    sub.add_parser("normalize", help="сырые данные -> entities/relations/files").set_defaults(func=cmd_normalize)
+    sub.add_parser("chunks", help="сущности -> чанки текста").set_defaults(func=cmd_chunks)
+    sub.add_parser("embed", help="эмбеддинги чанков + индексы").set_defaults(func=cmd_embed)
     sub.add_parser("status", help="прогресс ингеста").set_defaults(func=cmd_status)
     args = ap.parse_args()
     args.func(args)

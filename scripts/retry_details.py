@@ -62,7 +62,7 @@ def main() -> None:
             chunk = [n for n in queue[i:i + batch_size] if (kind_for_rec, n) not in have]
             if not chunk:
                 continue
-            entries = [(f"a{j}", gql_kind, n, stage_name == "pr_merged") for j, n in enumerate(chunk)]
+            entries = [(f"a{j}", kind_for_rec, n, stage_name == "pr_merged") for j, n in enumerate(chunk)]
             q = _build_batch_query(entries)
             try:
                 data = gql(client, q)
