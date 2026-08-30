@@ -68,21 +68,25 @@ def fts_top(cur, query, k=25, fetch=200):
     return [(eid, i + 1) for i, (eid, _r) in enumerate(ranked)]
 
 
-def rrf_fuse(vec_ranked, fts_ranked, k_rrf=60):
+def rrf_fuse(vec_ranked, fts_ranked, k_rrf=60, w_vec=1.0, w_fts=1.0):
     scores = {}
     channels = {}
-    for lst, name in ((vec_ranked, "vec"), (fts_ranked, "fts")):
+    for lst, name, w in ((vec_ranked, "vec", w_vec), (fts_ranked, "fts", w_fts)):
         for eid, rank in lst:
-            scores[eid] = scores.get(eid, 0.0) + 1.0 / (k_rrf + rank)
+            scores[eid] = scores.get(eid, 0.0) + w * 1.0 / (k_rrf + rank)
             channels.setdefault(eid, set()).add(name)
     ordered = sorted(scores.items(), key=lambda x: -x[1])
     return [(eid, sc, channels.get(eid, set())) for eid, sc in ordered]
 
 
-def hybrid_search(conn, query, k=25):
+def hybrid_search(conn, query, k=25, mode="hybrid", w_fts=1.0):
+    vec_r = []
+    fts_r = []
     with conn.cursor() as cur:
-        qvec = encode_query(query)
-        vec_r = vector_top(cur, qvec, k=k)
-        fts_r = fts_top(cur, query, k=k)
-    fused = rrf_fuse(vec_r, fts_r)
+        if mode in ("hybrid", "dense"):
+            qvec = encode_query(query)
+            vec_r = vector_top(cur, qvec, k=k)
+        if mode in ("hybrid", "fts"):
+            fts_r = fts_top(cur, query, k=k)
+    fused = rrf_fuse(vec_r, fts_r, w_fts=w_fts)
     return fused, vec_r, fts_r

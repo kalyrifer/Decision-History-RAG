@@ -24,3 +24,8 @@ REPO_GIT_DIR = DATA_DIR / "repo.git"
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 EMBED_DIM = 384
 QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+FTS_WEIGHT = 0.1  # вес FTS-канала в RRF fusion (понижен: FTS на этом корпусе шумит)
+
+RERANK_MODEL = "BAAI/bge-reranker-base"
+RERANK_DEVICE = "cpu"  # "cuda" при наличии GPU-версии torch

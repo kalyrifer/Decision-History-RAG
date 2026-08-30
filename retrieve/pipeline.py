@@ -6,7 +6,7 @@ import time
 
 sys.path.insert(0, ".")
 
-from config import PG_DSN
+from config import PG_DSN, FTS_WEIGHT
 
 from retrieve.expand import expand
 from retrieve.hybrid import hybrid_search
@@ -80,7 +80,8 @@ def _fetch_info(conn, ids):
 
 
 def search(query: str, no_expand: bool = False, k: int = 25, n_anchors: int = 10,
-           max_expand: int = 40, rewrite_query: bool = True):
+           max_expand: int = 40, rewrite_query: bool = True, mode: str = "hybrid",
+           w_fts: float = FTS_WEIGHT):
     from pgvector.psycopg import register_vector
 
     import psycopg
@@ -98,7 +99,7 @@ def search(query: str, no_expand: bool = False, k: int = 25, n_anchors: int = 10
             rw = rewrite(query)
             search_text = rw["en"] + (" " + " ".join(rw["kw"]) if rw["kw"] else "")
 
-        fused, vec_r, fts_r = hybrid_search(conn, search_text, k=k)
+        fused, vec_r, fts_r = hybrid_search(conn, search_text, k=k, mode=mode, w_fts=w_fts)
         fused = _collapse_comments(conn, fused)
         info = _fetch_info(conn, [eid for eid, _s, _c in fused])
 
