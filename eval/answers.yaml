@@ -1,0 +1,3521 @@
+- id: G01
+  question: Почему ядро pydantic переписали с Cython на Rust в версии 2?
+  expected_summary: Cython-сборки были громоздкими (проблемы с флагами компиляции
+    и размером), при v2 ядро выделили в отдельный пакет pydantic-core на Rust ради
+    скорости валидации; обязательность Rust-компонента вызывала споры (портативность,
+    Lambda), но выбор остался из-за производительности.
+  answer: '### 1. Original Problem
+
+
+    В версии 1.x ядро валидации pydantic было написано на Cython, что приводило к
+    ряду проблем, описанных в issue и комментариях в репозитории. Эти проблемы стали
+    мотивацией для перехода на Rust в pydantic 2.
+
+
+    Ключевые исходные жалобы (зафиксированные в evidence):
+
+
+    - Размер скомпилированных артефактов: `pip install pydantic` даёт ~80M, тогда
+    как `conda install` — ~6.6M (https://github.com/pydantic/pydantic/issues/2276,
+    peterroelants, 2021-01-20).
+
+    - Проблемы с ABI/совместимостью Cython-расширений при апгрейдах CPython и невозможность
+    собрать/запустить на нестандартных реализациях Python: https://github.com/pydantic/pydantic/issues/4790
+    (KOLANICH, 2022-11-26).
+
+    - Проблемы с импортом и хрупкость ABI-совместимых сборок (https://github.com/pydantic/pydantic/issues/584,
+    mivade, 2019-06-09).
+
+
+    ### 2. Alternatives Considered
+
+
+    - **Сохранить Cython** — отвергнут из-за перечисленных выше проблем с ABI, размером
+    и переносимостью.
+
+    - **Чистый Python** (валидация без нативного ядра) — поднимался KOLANICH в https://github.com/pydantic/pydantic/issues/4790
+    как радикальный способ избавиться от необходимости Rust toolchain у пользователей;
+    отвергнут по соображениям производительности.
+
+    - **Rust (pydantic-core)** — выбран как компромисс: сохраняет нативную скорость,
+    но даёт лучший контроль над ABI и совместимостью. KOLANICH в issue #4790 протестует
+    против этого выбора, но решение принято в пользу Rust.
+
+
+    ### 3. Arguments For/Against
+
+
+    За переход на Rust (фигурирует в косвенных формулировках — решения о Pydantic
+    V2 принимались командой):
+
+
+    - Подразумевается, что V2 должен был стать «Pydantic v2 = полностью переписанный,
+    на Rust для скорости» (это известная цель проекта, в evidence явно не цитируется,
+    но де-факто закреплено введением отдельного репозитория pydantic-core).
+
+
+    Против (Rust как обязательная зависимость):
+
+
+    - KOLANICH: «While I can understand that implementing something in Rust can have
+    a benefit of it working faster, but it has grave drawbacks too. … If something
+    is implemented in Rust, one needs Rust toolchain to build it from source. And
+    the toolchain is quite large.» (https://github.com/pydantic/pydantic/issues/4790).
+
+    - Дополнительная боль, ставшая реальной после перехода: колеса pydantic-core могут
+    отсутствовать для свежих версий CPython. Tromador: «As of 27th March release,
+    I found that latest pydantic-core was failing to install due to lack of wheels
+    and wanting to build at install time.» (https://github.com/pydantic/pydantic/issues/13005,
+    2026-03-31).
+
+    - dvzrv фиксирует операционную боль для дистрибутивов: «On Arch Linux, we are
+    building from upstream source … not from PyPI releases, because those are often
+    broken or incomplete and harder to patch.» (https://github.com/pydantic/pydantic/issues/13071,
+    2026-04-14).
+
+    - davnat: при отсутствии колеса пользователь получает непрозрачный build-ошибок,
+    а не внятное сообщение о несовместимости Python-версии (https://github.com/pydantic/pydantic/issues/13293,
+    2026-06-09).
+
+
+    ### 4. Decision
+
+
+    Решение: для Pydantic V2 валидационное ядро переписать на Rust и вынести в отдельный
+    пакет `pydantic-core` (расположенный в отдельном репозитории `pydantic/pydantic-core`).
+    Это зафиксировано фактом существования пакета `pydantic-core` (см. https://github.com/pydantic/pydantic/issues/6450,
+    2023-07-05, где обсуждается версия `pydantic_core 2.0.2` и требование `pydantic==2.0.1
+    → pydantic-core==2.0.2`). Прямая цитата лица, принявшего решение, в evidence отсутствует
+    — ответственность лежит на команде pydantic (Samuel Colvin, David Hewitt, Victorien
+    и др.).
+
+
+    ### 5. Implementation
+
+
+    - Введение отдельного Rust-пакета `pydantic-core` с жёсткой версионной привязкой
+    от `pydantic` (закреплено в `pyproject.toml` — упоминается в https://github.com/pydantic/pydantic/issues/13071:
+    «The pydantic release 2.13.0 appears to require a pydantic_core 2.46.0»).
+
+    - Добавление `pydantic-core` в `version-info`: PR https://github.com/pydantic/pydantic/pull/5424
+    (samuelcolvin, 2023-04-10) и коммит https://github.com/pydantic/pydantic/commit/c206df4e49a13937621420232629c9ef35483b29.
+
+    - Дальнейшее развитие шло уже в репозитории `pydantic/pydantic-core`, например
+    фикс `_pydantic_core.pyi`: https://github.com/pydantic/pydantic/commit/3409314dd967c8674ab99c848932a608933bb21c
+    (David Hewitt, 2023-07-05; ссылается на оригинальный коммит pydantic-core).
+
+    - Помощь дистрибутивам/пользователям: PR https://github.com/pydantic/pydantic/pull/11324
+    добавляет `check_pydantic_core_version()` (Viicos, 2025-01-23, закрывает https://github.com/pydantic/pydantic/issues/11323)
+    — именно как ответ на проблемы «версия pydantic-core не та, что ожидается».
+
+
+    ### 6. Current State
+
+
+    - `pydantic-core` (Rust) де-факто остаётся обязательным ядром валидации; от него
+    не отказались.
+
+    - Репозиторий `pydantic-core` впоследствии был влит обратно в `pydantic` (PR https://github.com/pydantic/pydantic/pull/12423,
+    davidhewitt, 2025-10-19; затем https://github.com/pydantic/pydantic/pull/12431
+    и https://github.com/pydantic/pydantic/pull/12436 с переписанными commit messages)
+    и, по словам dvzrv в https://github.com/pydantic/pydantic/issues/13071, «the pydantic-core
+    repository is now archived and its sources have been moved to this repository
+    instead». Развитие продолжается внутри монорепы (например, https://github.com/pydantic/pydantic/pull/12508
+    — dependabot bump `url` 2.5.4→2.5.7; миграция CI https://github.com/pydantic/pydantic/pull/12752,
+    Viicos, 2026-01-28; коммит https://github.com/pydantic/pydantic/commit/3db1cc52d51db0c0648f32b85884ef18283111ed,
+    2025-11-19).
+
+    - Сохраняются операционные проблемы, прямо вызванные Rust-зависимостью: отсутствие
+    колес под свежий CPython (https://github.com/pydantic/pydantic/issues/13005),
+    поломка Homebrew на macOS 15 из-за линковки (https://github.com/pydantic/pydantic/issues/13136,
+    washingtoneg, 2026-05-01), отсутствие тегов для версий pydantic-core в монорепе
+    (https://github.com/pydantic/pydantic/issues/13071), непрозрачные сообщения об
+    ошибках при отсутствии колес (https://github.com/pydantic/pydantic/issues/13293,
+    2026-06-09).
+
+
+    ### 7. Confidence & Gaps
+
+
+    Confidence: **medium-high** относительно самого факта перехода на Rust и его обоснования
+    (производительность, ABI-контроль), но **low-medium** относительно деталей внутренней
+    дискуссии.
+
+
+    Чего не хватает в evidence:
+
+    - Прямой цитаты основателя/мейнтейнера с явной формулировкой «мы переходим на
+    Rust вместо Cython по причинам X, Y, Z» (например, оригинального анонса Pydantic
+    V2). В предоставленных блоках есть только косвенные следы (https://github.com/pydantic/pydantic/issues/6450,
+    https://github.com/pydantic/pydantic/pull/5424).
+
+    - Сравнительных бенчмарков Cython vs Rust, обсуждавшихся при принятии решения.
+
+    - Явного ADR или GitHub-обсуждения, в котором сравнивались именно варианты «оставить
+    Cython», «чистый Python», «Rust». Известно лишь, что KOLANICH в https://github.com/pydantic/pydantic/issues/4790
+    предлагал убрать обязательный нативный компонент вовсе, но это не было принято.'
+  sources:
+  - url: https://github.com/pydantic/pydantic/issues/13005
+    kind: issue
+    number: '13005'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/12189
+    kind: issue
+    number: '12189'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/13071
+    kind: issue
+    number: '13071'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/4790
+    kind: issue
+    number: '4790'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/12431
+    kind: pr
+    number: '12431'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/12423
+    kind: pr
+    number: '12423'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/12508
+    kind: pr
+    number: '12508'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/6450
+    kind: issue
+    number: '6450'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/12526
+    kind: issue
+    number: '12526'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/12436
+    kind: pr
+    number: '12436'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/12752
+    kind: pr
+    number: '12752'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/2276
+    kind: issue
+    number: '2276'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/13136
+    kind: issue
+    number: '13136'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/11323
+    kind: issue
+    number: '11323'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/13293
+    kind: issue
+    number: '13293'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/6557
+    kind: issue
+    number: '6557'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/commit/c206df4e49a13937621420232629c9ef35483b29
+    kind: commit
+    number: c206df4e49a13937621420232629c9ef35483b29
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/12496
+    kind: pr
+    number: '12496'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/5424
+    kind: pr
+    number: '5424'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/11324
+    kind: pr
+    number: '11324'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/commit/3db1cc52d51db0c0648f32b85884ef18283111ed
+    kind: commit
+    number: 3db1cc52d51db0c0648f32b85884ef18283111ed
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/commit/3409314dd967c8674ab99c848932a608933bb21c
+    kind: commit
+    number: 3409314dd967c8674ab99c848932a608933bb21c
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/commit/0851ce7fc67786f038a865bebaca56c2c06e00b4
+    kind: commit
+    number: 0851ce7fc67786f038a865bebaca56c2c06e00b4
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/commit/e2470302654d26c9691558af880fd47db3d3bee1
+    kind: commit
+    number: e2470302654d26c9691558af880fd47db3d3bee1
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/584
+    kind: issue
+    number: '584'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/5451
+    kind: pr
+    number: '5451'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/12196
+    kind: pr
+    number: '12196'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/commit/ae5d37bb5de08ab9577346fd4bcc70524dfdd09a
+    kind: commit
+    number: ae5d37bb5de08ab9577346fd4bcc70524dfdd09a
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/12504
+    kind: pr
+    number: '12504'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/7277
+    kind: pr
+    number: '7277'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/commit/8d2bbf1d5d21b3204a5f84f8eeea3709158b8340
+    kind: commit
+    number: 8d2bbf1d5d21b3204a5f84f8eeea3709158b8340
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/10942
+    kind: pr
+    number: '10942'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/555
+    kind: issue
+    number: '555'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/12481
+    kind: pr
+    number: '12481'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/1162
+    kind: issue
+    number: '1162'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/553
+    kind: pr
+    number: '553'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/12415
+    kind: pr
+    number: '12415'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/12387
+    kind: issue
+    number: '12387'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/12321
+    kind: issue
+    number: '12321'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1234
+    kind: issue
+    number: '1234'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/3968
+    kind: pr
+    number: '3968'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1047
+    kind: issue
+    number: '1047'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1062
+    kind: pr
+    number: '1062'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1065
+    kind: pr
+    number: '1065'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1019
+    kind: issue
+    number: '1019'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1061
+    kind: pr
+    number: '1061'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1018
+    kind: pr
+    number: '1018'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1058
+    kind: pr
+    number: '1058'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1025
+    kind: pr
+    number: '1025'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1020
+    kind: issue
+    number: '1020'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1026
+    kind: issue
+    number: '1026'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1021
+    kind: issue
+    number: '1021'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1071
+    kind: pr
+    number: '1071'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1022
+    kind: issue
+    number: '1022'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1060
+    kind: issue
+    number: '1060'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1029
+    kind: pr
+    number: '1029'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1033
+    kind: issue
+    number: '1033'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1057
+    kind: issue
+    number: '1057'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1003
+    kind: pr
+    number: '1003'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1045
+    kind: pr
+    number: '1045'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1011
+    kind: pr
+    number: '1011'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1064
+    kind: issue
+    number: '1064'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1068
+    kind: issue
+    number: '1068'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1002
+    kind: issue
+    number: '1002'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1048
+    kind: pr
+    number: '1048'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1013
+    kind: pr
+    number: '1013'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/5600
+    kind: pr
+    number: '5600'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/667
+    kind: issue
+    number: '667'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/789
+    kind: issue
+    number: '789'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1027
+    kind: pr
+    number: '1027'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1023
+    kind: pr
+    number: '1023'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/587
+    kind: issue
+    number: '587'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/792
+    kind: issue
+    number: '792'
+    role: expanded
+  confidence: high
+  timeline:
+  - date: '2019-06-09'
+    kind: issue
+    native_id: '584'
+    title: module 'cython' has no attribute 'compiled'
+  - date: '2021-01-20'
+    kind: issue
+    native_id: '2276'
+    title: Change default cython flags to have smaller compiled files
+  - date: '2022-11-26'
+    kind: issue
+    native_id: '4790'
+    title: Get rid of mandatory Rust-implemented component
+  - date: '2023-04-10'
+    kind: commit
+    native_id: c206df4e49a13937621420232629c9ef35483b29
+    title: null
+  - date: '2023-04-10'
+    kind: pr
+    native_id: '5424'
+    title: add pydantic-core to version-info
+  - date: '2023-07-05'
+    kind: issue
+    native_id: '6450'
+    title: pydantic 2.0.1 needs pydantic_core 2.0.2 but pydantic_core 2.1.2 is available
+  - date: '2023-07-05'
+    kind: commit
+    native_id: 3409314dd967c8674ab99c848932a608933bb21c
+    title: null
+  - date: '2023-07-10'
+    kind: issue
+    native_id: '6557'
+    title: No module named 'pydantic_core._pydantic_core' using AWS Lambdas
+  - date: '2025-01-23'
+    kind: issue
+    native_id: '11323'
+    title: Add `check_pydantic_core_version()`
+  - date: '2025-01-23'
+    kind: pr
+    native_id: '11324'
+    title: Add a `check_pydantic_core_version()` function
+  - date: '2025-08-25'
+    kind: issue
+    native_id: '12189'
+    title: 'ImportError: cannot import name ''validate_core_schema'' from ''pydantic_core''
+      when using copernicus marine toolbox'
+  - date: '2025-10-19'
+    kind: pr
+    native_id: '12423'
+    title: Import `pydantic-core` into pydantic tree
+  - date: '2025-10-20'
+    kind: pr
+    native_id: '12431'
+    title: import `pydantic-core` with commit messages updated
+  - date: '2025-10-22'
+    kind: pr
+    native_id: '12436'
+    title: import pydantic-core with commit messages updated, try 2
+  - date: '2025-11-07'
+    kind: pr
+    native_id: '12496'
+    title: Make `uv` automatically install `pydantic-core` on `uv run`
+  - date: '2025-11-10'
+    kind: pr
+    native_id: '12508'
+    title: Bump Rust url dependency from 2.5.4 to 2.5.7 in `pydantic-core`
+  - date: '2025-11-11'
+    kind: commit
+    native_id: 0851ce7fc67786f038a865bebaca56c2c06e00b4
+    title: null
+  - date: '2025-11-12'
+    kind: issue
+    native_id: '12526'
+    title: Pydantic V2 and V2 core local change sync issue
+  - date: '2025-11-19'
+    kind: commit
+    native_id: 3db1cc52d51db0c0648f32b85884ef18283111ed
+    title: null
+  - date: '2026-01-28'
+    kind: pr
+    native_id: '12752'
+    title: Migrate `pydantic-core` CI
+  - date: '2026-02-19'
+    kind: commit
+    native_id: e2470302654d26c9691558af880fd47db3d3bee1
+    title: null
+  - date: '2026-03-31'
+    kind: issue
+    native_id: '13005'
+    title: Pydantic-core 2.43+ missing wheels. Windows cpython 3.14
+  - date: '2026-04-14'
+    kind: issue
+    native_id: '13071'
+    title: 'Pydantic 2.13.0: Missing tags for pydantic-core releases - unable to upgrade
+      downstream package'
+  - date: '2026-05-01'
+    kind: issue
+    native_id: '13136'
+    title: pydantic-core macOS wheels break Homebrew install on macOS 15 (-headerpad_max_install_names)
+  - date: '2026-06-09'
+    kind: issue
+    native_id: '13293'
+    title: Provide a clearer error message when installing a Pydantic version on an
+      unsupported Python version
+  score: 2
+  notes: correct answer with working links
+- id: G02
+  question: Почему pydantic не использует строгий режим валидации по умолчанию?
+  expected_summary: 'Сознательная философия проекта: lax-режим по умолчанию ради удобства
+    работы с реальными данными, strict доступен как конфигурация (#1098); позиция
+    зафиксирована в раннем issue о назначении pydantic (#578).'
+  answer: '### 1. Original Problem
+
+
+    The question of whether Pydantic should validate input types strictly (no coercion)
+    by default — or coerce values (e.g., `"3"` → `int(3)`, `3.14` → `int(3)`) — has
+    been a recurring request in the project since at least 2019. The originating tension
+    is documented in https://github.com/pydantic/pydantic/issues/578, where samuelcolvin
+    clarified Pydantic''s design intent.
+
+
+    ### 2. Alternatives Considered
+
+
+    - **Keep coercion (lax) as default**, provide separate `Strict*` types (`StrictInt`,
+    `StrictFloat`, etc.) — the original V1 stance (https://github.com/pydantic/pydantic/issues/578).
+
+    - **Global / per-model `strict` config flag** that switches all default validators
+    to strict variants (https://github.com/pydantic/pydantic/issues/1098).
+
+    - **Per-field strict override** via `Field(strict=True/False)` — implemented in
+    V2 (https://github.com/pydantic/pydantic/issues/7268 shows users expect this).
+
+    - **`model_strict()` / `model_lax()` class methods** to produce strict or lax
+    variants of a model (https://github.com/pydantic/pydantic/issues/4664).
+
+    - **Allow overriding default type validators entirely** instead of a binary strict/lax
+    switch (https://github.com/pydantic/pydantic/issues/3208).
+
+    - **Lazy build of two validators** (strict + lax) per model (https://github.com/pydantic/pydantic/issues/4664).
+
+
+    ### 3. Arguments For/Against
+
+
+    **For strict-by-default / strict mode:**
+
+    - maxrothman (https://github.com/pydantic/pydantic/issues/1098): "The lack of
+    this feature is the only thing keeping me from strongly recommending the use of
+    Pydantic in my workplace."
+
+    - ArtemIsmagilov (https://github.com/pydantic/pydantic/issues/11273): "I think
+    it would be better for pydantic to validate this by default. This will give more
+    rigor and correctness to the library. This is its philosophy."
+
+    - Varriount (https://github.com/pydantic/pydantic/issues/3208): "a population
+    of users disagree with Pydantic''s default validation logic" — argues strict mode
+    alone is insufficient and prefers pluggable validators.
+
+    - vitalik (https://github.com/pydantic/pydantic/issues/6045): int→str coercion
+    "was working in pydantic v1, and was actually very handy" — wants more lenient
+    coercion, not stricter; shows the user base is split.
+
+
+    **Against strict-by-default (maintaining coercion as default):**
+
+    - samuelcolvin (https://github.com/pydantic/pydantic/issues/578): "Pydantic is
+    not a validation library, it''s a parsing library. It makes no guarantee whatsoever
+    about checking the form of data you give to it; instead it makes a guarantee about
+    the form of data you get out of it." Also: "I think this is correct and I''m not
+    interested in changing it."
+
+    - samuelcolvin on renaming APIs to reflect parsing/validation: "This is a big,
+    backwards incompatible change for no material benefit but I think it''s worth
+    it for clarity" — declined the rename but accepted that lax coercion is the deliberate
+    design.
+
+    - samuelcolvin in https://github.com/pydantic/pydantic/issues/4664: pydantic-core
+    "can switch from strict to lax mode at validation time… however unfortunately
+    I very much doubt that will be possible in pydantic - many of the schemas will
+    need to be different for strict and lax mode." — i.e., strict-by-default would
+    require substantial schema work.
+
+    - Varriount (https://github.com/pydantic/pydantic/issues/3208): "''strict''-ness
+    is a subjective quality… It is unlikely that a ''strict'' mode for Pydantic will
+    actually satisfy all users'' definitions of ''strict''." — argues against a single
+    strict default.
+
+
+    ### 4. Decision
+
+
+    Coercion (lax mode) remained the default. Strict behavior became opt-in per-field
+    via `Field(strict=True)` and per-model via `model_config = ConfigDict(strict=True)`.
+    This was articulated by samuelcolvin in https://github.com/pydantic/pydantic/issues/578
+    ("I think this is correct and I''m not interested in changing it") and confirmed
+    in the V2 roadmap at https://github.com/pydantic/pydantic/issues/4664, where strict
+    mode was implemented as a feature toggle rather than a default change.
+
+
+    ### 5. Implementation
+
+
+    The evidence blocks do not include specific PR/commit URLs that implemented the
+    V2 strict-mode config flag. We can confirm from issue references that:
+
+    - V1 already had `StrictInt`/`StrictFloat`/etc. types (referenced in https://github.com/pydantic/pydantic/issues/3208).
+
+    - V2 added `ConfigDict(strict=True)` and per-field `Field(strict=True/False)`
+    — exercised in https://github.com/pydantic/pydantic/issues/7268, https://github.com/pydantic/pydantic/issues/7468,
+    https://github.com/pydantic/pydantic/issues/8147, https://github.com/pydantic/pydantic/issues/9204.
+    The exact implementing PRs are not present in the evidence.
+
+
+    ### 6. Current State
+
+
+    - Lax coercion is still the default in V2.
+
+    - Users can opt into strictness per-model (`ConfigDict(strict=True)`) and per-field
+    (`Field(strict=False)`), as shown by multiple V2 bug reports that rely on these
+    knobs.
+
+    - Outstanding bug reports show the strict-mode integration with `model_validator(mode="before"/"after"/"wrap")`
+    and with types like `Path`, `UUID`, `datetime.date`, and `tuple` is still imperfect
+    (https://github.com/pydantic/pydantic/issues/7268, https://github.com/pydantic/pydantic/issues/7468,
+    https://github.com/pydantic/pydantic/issues/8147, https://github.com/pydantic/pydantic/issues/9204).
+
+    - The request to make defaults themselves strictly validated (`validate_default`
+    semantics made default) is still open as a philosophical/design question in https://github.com/pydantic/pydantic/issues/11273.
+
+    - Detection of strict mode from inside third-party before/after validators (a
+    long-standing feature request) remains open in https://github.com/pydantic/pydantic/issues/6802.
+
+
+    ### 7. Confidence & Gaps
+
+
+    **Confidence: medium.** The reasoning and decision are well-documented in samuelcolvin''s
+    own words across #578 and #4664, but the specific PRs/commits that implemented
+    the V2 `strict` config flag and per-field `Field(strict=…)` are not in the evidence
+    set — only the resulting issues that use them. Also missing: any discussion specifically
+    of *default* strictness (the user''s exact framing) in V2-era design notes; the
+    evidence shows requests for it were declined or left as opt-in.'
+  sources:
+  - url: https://github.com/pydantic/pydantic/issues/578
+    kind: issue
+    number: '578'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/4664
+    kind: issue
+    number: '4664'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/11273
+    kind: issue
+    number: '11273'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/3208
+    kind: issue
+    number: '3208'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/9589
+    kind: issue
+    number: '9589'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/1098
+    kind: issue
+    number: '1098'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/6802
+    kind: issue
+    number: '6802'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/1851
+    kind: issue
+    number: '1851'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/9204
+    kind: issue
+    number: '9204'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/7468
+    kind: issue
+    number: '7468'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/8244
+    kind: issue
+    number: '8244'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/7268
+    kind: issue
+    number: '7268'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/8147
+    kind: issue
+    number: '8147'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/11426
+    kind: issue
+    number: '11426'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/6045
+    kind: issue
+    number: '6045'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/12236
+    kind: issue
+    number: '12236'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/8173
+    kind: issue
+    number: '8173'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/6597
+    kind: issue
+    number: '6597'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/1710
+    kind: issue
+    number: '1710'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/10603
+    kind: issue
+    number: '10603'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/11681
+    kind: issue
+    number: '11681'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/13592
+    kind: issue
+    number: '13592'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/9549
+    kind: issue
+    number: '9549'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/7349
+    kind: issue
+    number: '7349'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/10205
+    kind: issue
+    number: '10205'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/11070
+    kind: issue
+    number: '11070'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/579
+    kind: issue
+    number: '579'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/10784
+    kind: issue
+    number: '10784'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/52
+    kind: pr
+    number: '52'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/856
+    kind: pr
+    number: '856'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/5177
+    kind: pr
+    number: '5177'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/693
+    kind: issue
+    number: '693'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/360
+    kind: issue
+    number: '360'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2855
+    kind: pr
+    number: '2855'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/284
+    kind: issue
+    number: '284'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/3747
+    kind: issue
+    number: '3747'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/576
+    kind: issue
+    number: '576'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/3884
+    kind: issue
+    number: '3884'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/865
+    kind: issue
+    number: '865'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12469
+    kind: pr
+    number: '12469'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/347
+    kind: issue
+    number: '347'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/2025
+    kind: issue
+    number: '2025'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/951
+    kind: issue
+    number: '951'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1130
+    kind: issue
+    number: '1130'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1205
+    kind: issue
+    number: '1205'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/2011
+    kind: issue
+    number: '2011'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/317
+    kind: pr
+    number: '317'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2509
+    kind: pr
+    number: '2509'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/624
+    kind: issue
+    number: '624'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4753
+    kind: pr
+    number: '4753'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4516
+    kind: pr
+    number: '4516'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/4669
+    kind: issue
+    number: '4669'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4713
+    kind: pr
+    number: '4713'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/11272
+    kind: issue
+    number: '11272'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/8080
+    kind: pr
+    number: '8080'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1179
+    kind: pr
+    number: '1179'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4978
+    kind: pr
+    number: '4978'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2618
+    kind: pr
+    number: '2618'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2224
+    kind: pr
+    number: '2224'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/416
+    kind: issue
+    number: '416'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12761
+    kind: pr
+    number: '12761'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/13144
+    kind: pr
+    number: '13144'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/10024
+    kind: pr
+    number: '10024'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/13571
+    kind: pr
+    number: '13571'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12765
+    kind: pr
+    number: '12765'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/477
+    kind: issue
+    number: '477'
+    role: expanded
+  confidence: high
+  timeline:
+  - date: '2019-06-05'
+    kind: issue
+    native_id: '578'
+    title: Clarify the purpose of pydantic e.g. not strict validation
+  - date: '2019-12-15'
+    kind: issue
+    native_id: '1098'
+    title: Strict configuration
+  - date: '2020-08-19'
+    kind: issue
+    native_id: '1851'
+    title: Can I make a default value in pydantic if None is passed in the field without
+      using validators?
+  - date: '2021-09-14'
+    kind: issue
+    native_id: '3208'
+    title: Allow overriding default type validators (alternative to "strict" mode)
+  - date: '2022-10-27'
+    kind: issue
+    native_id: '4664'
+    title: 'V2: Strict mode for types defined in python'
+  - date: '2023-06-08'
+    kind: issue
+    native_id: '6045'
+    title: V2 - Validating int->str
+  - date: '2023-07-22'
+    kind: issue
+    native_id: '6802'
+    title: Detect strict-mode inside third-party, before and after validators
+  - date: '2023-08-28'
+    kind: issue
+    native_id: '7268'
+    title: Cannot override strict mode on a Path-like field
+  - date: '2023-09-16'
+    kind: issue
+    native_id: '7468'
+    title: Specifying a model_validator(mode="after") on a BaseModel subclass breaks
+      datetime.date serialization/validation in strict-mode
+  - date: '2023-11-16'
+    kind: issue
+    native_id: '8147'
+    title: Unexpected behaviour using a custom validator with `mode='wrap'` when used
+      with `model_validate_json`
+  - date: '2023-11-28'
+    kind: issue
+    native_id: '8244'
+    title: Strict mode For URLs
+  - date: '2024-04-10'
+    kind: issue
+    native_id: '9204'
+    title: Unexpected ValidationError when validating tuple from json in strict mode
+      with model_validator("before")
+  - date: '2024-06-06'
+    kind: issue
+    native_id: '9589'
+    title: When using model_validator in mode=before in a child A of pydantic class,
+      this affects also other children.
+  - date: '2025-01-15'
+    kind: issue
+    native_id: '11273'
+    title: Add strict validation for default values, not missing by default mode
+  - date: '2025-02-10'
+    kind: issue
+    native_id: '11426'
+    title: '`model_validator(mode="before")` behaves differently between Pydantic
+      V1 and V2 when using `model_validate_json()`'
+  score: 2
+  notes: correct answer with working links
+- id: G03
+  question: Почему в pydantic v2 перестали автоматически приводить int к str при валидации?
+  expected_summary: 'В v2 пересмотрели lax-конверсии: int->str признан источником
+    тихих ошибок и убран из дефолтного поведения; обсуждение последствий и мотивации
+    в #6045.'
+  answer: '### 1. Original Problem
+
+    В Pydantic v1 `int`, `float`, `Decimal` автоматически приводились к `str` через
+    `str(v)` при валидации `str`-полей. В Pydantic v2 это поведение по умолчанию исчезло,
+    что вызвало волну жалоб на регрессию. Основные исходные issue:
+
+
+    - [#6045](https://github.com/pydantic/pydantic/issues/6045) (vitalik, 2023-06-08)
+    — продолжение [#5993](https://github.com/pydantic/pydantic/issues/5993), feature
+    request на возврат авто-приведения.
+
+    - [#6446](https://github.com/pydantic/pydantic/issues/6446) (mrenner-ML, 2023-07-05)
+    — баг-репорт: документация v2 всё ещё обещает "int, float, and Decimal are coerced
+    using str(v)", но поведение не работает.
+
+    - [#6667](https://github.com/pydantic/pydantic/issues/6667) (knttakahashi, 2023-07-14)
+    — то же поведение не работает даже при `strict=False`.
+
+    - [#3747](https://github.com/pydantic/pydantic/issues/3747) (puneetugru, 2022-01-28)
+    — аналогичная жалоба ещё на v1 (был авто-каст, и пользователи уже тогда зависели
+    от него).
+
+
+    ### 2. Alternatives Considered
+
+    - **Полное удаление приведения** — что и сделали по умолчанию в v2 (strict-by-default
+    для большинства типов).
+
+    - **Глобальный флаг для возврата поведения v1** — обсуждалось в [#6045](https://github.com/pydantic/pydantic/issues/6045)
+    (vitalik: "would be nice to have some feature to be able to turn on str parsing
+    (globally?)").
+
+    - **Поле-уровневый флаг `coerce_numbers_to_str`** — в итоге именно он был добавлен
+    как `ConfigDict(coerce_numbers_to_str=True)`, см. [#8443](https://github.com/pydantic/pydantic/issues/8443).
+
+    - **«Тихая» обратная совместимость** — отвергнута, см. [#4246](https://github.com/pydantic/pydantic/issues/4246)
+    (amirhessam88): критиковал silent coercion, что в итоге и привело к ужесточению
+    в v2.
+
+
+    ### 3. Arguments For/Against
+
+    - **За приведение (v1-style)**: vitalik [#6045](https://github.com/pydantic/pydantic/issues/6045):
+    "this was working in pydantic v1, and was actually very handy when dealing with
+    parsing data of a public API where users send messy data from JS client sides".
+
+    - **Против silent coercion**: amirhessam88 [#4246](https://github.com/pydantic/pydantic/issues/4246):
+    "I think the validators should not change the type; in a large code base that
+    would lead to some bugs that cannot be found easily … truncation would happen
+    at some of them and the user is not aware of it".
+
+    - **Документация обещала, что работает**: mrenner-ML [#6446](https://github.com/pydantic/pydantic/issues/6446):
+    "In the ''Standard Library Types'' documentation, it however says: ''int, float,
+    and Decimal are coerced using str(v)'' … Is this a new behavior in pydantic v2
+    not yet reflected in the documentation? Or a bug?".
+
+    - **Не работает даже в lax-режиме**: knttakahashi [#6667](https://github.com/pydantic/pydantic/issues/6667):
+    "str fields do not accept int value with strict mode disabled in v2".
+
+    - **Исторический контекст ужесточения**: samuelcolvin в [PR #52](https://github.com/pydantic/pydantic/pull/52)
+    (2017): "In the end, I thought about this and decided whitelisting things which
+    can be coerced to strings made more sense" — направление к сужению неявных коэрсий
+    было задано ещё в v1.
+
+
+    ### 4. Decision
+
+    Решение — strict-by-default в v2: `int`/`float`/`Decimal` **не** приводятся к
+    `str` автоматически. Для пользователей, которым нужно старое поведение, введён
+    opt-in флаг `ConfigDict(coerce_numbers_to_str=True)`. Прямая цитата автора решения
+    в предоставленных блоках отсутствует, но выбранная модель отражена в issue/PR
+    и в коде: см. [#8443](https://github.com/pydantic/pydantic/issues/8443) (assigned
+    @Kludex) и [#6667](https://github.com/pydantic/pydantic/issues/6667) (assigned
+    @dmontagu) — оба помечены `pending`/`bug V2`, что соответствует доработке `coerce_numbers_to_str`.
+
+
+    ### 5. Implementation
+
+    Прямых ссылок на PR/коммит, реализующий смену поведения и флаг `coerce_numbers_to_str`,
+    в предоставленных evidence нет. Известно из issue [#8443](https://github.com/pydantic/pydantic/issues/8443),
+    что флаг уже существует в `ConfigDict`, но автор сообщает о его неэффективности
+    в pydantic-core 2.14.6 / pydantic 2.5.3 (баг, что `Model(value=42).value` остаётся
+    числом). Конкретный фикс-PR в выданных блоках не упомянут.
+
+
+    ### 6. Current State
+
+    - В дефолте v2: `int → str` НЕ приводится (см. [#6446](https://github.com/pydantic/pydantic/issues/6446),
+    [#6667](https://github.com/pydantic/pydantic/issues/6667), [#6045](https://github.com/pydantic/pydantic/issues/6045)).
+
+    - Доступен opt-in `ConfigDict(coerce_numbers_to_str=True)`, но на декабрь 2023
+    он, по сообщению [#8443](https://github.com/pydantic/pydantic/issues/8443), ещё
+    не работал корректно — статус бага `pending`.
+
+    - Документация на момент [#6446](https://github.com/pydantic/pydantic/issues/6446)
+    (июль 2023) всё ещё утверждала обратное — требовалась синхронизация.
+
+    - Параллельно обнаружились смежные регрессии strict-режима, затрагивающие ту же
+    область «lax-поведения в JSON-режиме»: [#9204](https://github.com/pydantic/pydantic/issues/9204)
+    (tuple из JSON не строится в strict при наличии `@model_validator`), [#8981](https://github.com/pydantic/pydantic/issues/8981)
+    (tuple→list в strict), [#9549](https://github.com/pydantic/pydantic/issues/9549)
+    (`UserDict` не проходит strict), [#12236](https://github.com/pydantic/pydantic/issues/12236)
+    (любой `@model_validator` ломает JSON-коэрсии в strict), [#7468](https://github.com/pydantic/pydantic/issues/7468)
+    (`model_validator(mode="after")` ломает `date` из JSON в strict). Все они иллюстрируют
+    общий принцип: v2 — strict по умолчанию, любые коэрсии — только opt-in.
+
+
+    ### 7. Confidence & Gaps
+
+    **Confidence: medium.**
+
+    - Уверенно: в v2 поведение изменено намеренно, в духе [#4246](https://github.com/pydantic/pydantic/issues/4246)
+    и общей строгости v2; opt-in флаг существует.
+
+    - Пробелы: нет прямой цитаты мейнтейнера, формализующей решение именно по `int
+    → str` (вероятно, в [#5993](https://github.com/pydantic/pydantic/issues/5993),
+    на который ссылается [#6045](https://github.com/pydantic/pydantic/issues/6045),
+    но его текст в выданных блоках не приведён); нет ссылки на конкретный PR, реализовавший
+    изменение и/или починивший `coerce_numbers_to_str` после [#8443](https://github.com/pydantic/pydantic/issues/8443).'
+  sources:
+  - url: https://github.com/pydantic/pydantic/issues/6045
+    kind: issue
+    number: '6045'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/3747
+    kind: issue
+    number: '3747'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/9204
+    kind: issue
+    number: '9204'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/6667
+    kind: issue
+    number: '6667'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/12236
+    kind: issue
+    number: '12236'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/6446
+    kind: issue
+    number: '6446'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/8981
+    kind: issue
+    number: '8981'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/8443
+    kind: issue
+    number: '8443'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/52
+    kind: pr
+    number: '52'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/6140
+    kind: issue
+    number: '6140'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/1988
+    kind: issue
+    number: '1988'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/7468
+    kind: issue
+    number: '7468'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/9549
+    kind: issue
+    number: '9549'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/4246
+    kind: issue
+    number: '4246'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/11273
+    kind: issue
+    number: '11273'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/8057
+    kind: issue
+    number: '8057'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/7820
+    kind: issue
+    number: '7820'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/5606
+    kind: issue
+    number: '5606'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/5993
+    kind: issue
+    number: '5993'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/3208
+    kind: issue
+    number: '3208'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/13602
+    kind: issue
+    number: '13602'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/6261
+    kind: issue
+    number: '6261'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/8849
+    kind: issue
+    number: '8849'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/12288
+    kind: pr
+    number: '12288'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/11426
+    kind: issue
+    number: '11426'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/7508
+    kind: pr
+    number: '7508'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/6737
+    kind: pr
+    number: '6737'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/45
+    kind: issue
+    number: '45'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12765
+    kind: pr
+    number: '12765'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/578
+    kind: issue
+    number: '578'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/6962
+    kind: issue
+    number: '6962'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/6535
+    kind: pr
+    number: '6535'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/6668
+    kind: issue
+    number: '6668'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/7000
+    kind: issue
+    number: '7000'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/9621
+    kind: issue
+    number: '9621'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/6790
+    kind: pr
+    number: '6790'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/6096
+    kind: issue
+    number: '6096'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/7238
+    kind: pr
+    number: '7238'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/6951
+    kind: pr
+    number: '6951'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/7324
+    kind: issue
+    number: '7324'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/8147
+    kind: issue
+    number: '8147'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2140
+    kind: pr
+    number: '2140'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2102
+    kind: pr
+    number: '2102'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1780
+    kind: pr
+    number: '1780'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/284
+    kind: issue
+    number: '284'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4200
+    kind: pr
+    number: '4200'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1903
+    kind: pr
+    number: '1903'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/commit/53ba3561586b1048a9db7587b4d78ab2ca306b33
+    kind: commit
+    number: 53ba3561586b1048a9db7587b4d78ab2ca306b33
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/856
+    kind: pr
+    number: '856'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/6998
+    kind: pr
+    number: '6998'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/6726
+    kind: issue
+    number: '6726'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/3746
+    kind: issue
+    number: '3746'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/3752
+    kind: issue
+    number: '3752'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/3731
+    kind: pr
+    number: '3731'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/693
+    kind: issue
+    number: '693'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/360
+    kind: issue
+    number: '360'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2855
+    kind: pr
+    number: '2855'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1098
+    kind: issue
+    number: '1098'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/576
+    kind: issue
+    number: '576'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/3884
+    kind: issue
+    number: '3884'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/579
+    kind: issue
+    number: '579'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/865
+    kind: issue
+    number: '865'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12469
+    kind: pr
+    number: '12469'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12780
+    kind: pr
+    number: '12780'
+    role: expanded
+  confidence: high
+  timeline:
+  - date: '2017-06-21'
+    kind: pr
+    native_id: '52'
+    title: stricter str validation
+  - date: '2020-10-10'
+    kind: issue
+    native_id: '1988'
+    title: Is it possible to use Pydantic to coerce models to valid JSON models?
+  - date: '2022-01-28'
+    kind: issue
+    native_id: '3747'
+    title: pydantic unable to identify wrong value type when int is passed instead
+      of str for as an attribute's value
+  - date: '2022-07-17'
+    kind: issue
+    native_id: '4246'
+    title: Type validation can lead to type change and truncation in a silence mode
+  - date: '2023-06-08'
+    kind: issue
+    native_id: '6045'
+    title: V2 - Validating int->str
+  - date: '2023-06-14'
+    kind: issue
+    native_id: '6140'
+    title: Performance issue with pydantic's set[tuple[str,int]] validation
+  - date: '2023-07-05'
+    kind: issue
+    native_id: '6446'
+    title: Ints are not coerced into strings
+  - date: '2023-07-14'
+    kind: issue
+    native_id: '6667'
+    title: Type coercion does not work for str field with strict mode disabled.
+  - date: '2023-09-16'
+    kind: issue
+    native_id: '7468'
+    title: Specifying a model_validator(mode="after") on a BaseModel subclass breaks
+      datetime.date serialization/validation in strict-mode
+  - date: '2023-12-27'
+    kind: issue
+    native_id: '8443'
+    title: coerce_numbers_to_str raising a Validation Error
+  - date: '2024-03-09'
+    kind: issue
+    native_id: '8981'
+    title: tuple gets converted list by validate_python in strict mode
+  - date: '2024-04-10'
+    kind: issue
+    native_id: '9204'
+    title: Unexpected ValidationError when validating tuple from json in strict mode
+      with model_validator("before")
+  - date: '2024-06-03'
+    kind: issue
+    native_id: '9549'
+    title: TypeAdapter for collections.abc.MutableMapping fails when validate_python
+      called on a  collections.UserDict in strict mode
+  - date: '2025-01-15'
+    kind: issue
+    native_id: '11273'
+    title: Add strict validation for default values, not missing by default mode
+  - date: '2025-09-09'
+    kind: issue
+    native_id: '12236'
+    title: model_validate_json won't do coercions in strict mode if there is a `@model_validator`
+  score: 2
+  notes: correct answer with working links
+- id: G04
+  question: Как и почему в pydantic появились discriminated unions?
+  expected_summary: Запрос пришёл из потребности валидировать union-типы по тегу как
+    в OpenAPI 3 (#619, долгий тред); дизайн обсуждался годами, реализовано через Literal/Discriminator
+    в v2.
+  answer: '### 1. Original Problem
+
+
+    В Pydantic V1 поддержка `typing.Union` покрывала далеко не все случаи спецификаций
+    JSONSchema и OpenAPI. В частности, OpenAPI поддерживает **tagged unions** с полем-дискриминатором,
+    но Pydantic не умел ни валидировать входящие JSON-данные по такому полю, ни генерировать
+    корректный JSON-схема-объект с `oneOf` и `discriminator`.
+
+
+    Оригинальный запрос — feature request [sm-Fifteen в issue #619](https://github.com/pydantic/pydantic/issues/619)
+    (2019-06-24):
+
+
+    > "Pydantic currently has a decent support for union types through the `typing.Union`
+    type from PEP484, but it does not currently cover all the cases covered by the
+    JSONSchema and OpenAPI specifications… OpenAPI supports something similar to tagged
+    unions where a certain field is designated to serve as a ''discriminator''."
+
+
+    Предлагался API вроде:
+
+    ```py
+
+    MyTaggedUnion = TaggedUnion(Union[Foo, Bar], discriminator=''type'', mapping={''foo'':
+    Foo, ''bar'': Bar})
+
+    ```
+
+
+    ### 2. Alternatives Considered
+
+
+    - **Расширить `Field`** параметрами `discriminator`/`mapping` (вариант в issue
+    [#619](https://github.com/pydantic/pydantic/issues/619)): "discriminator and mapping
+    could also simply be added to Schema".
+
+    - **PEP 593 (`Annotated`)** как механизм аннотирования обычного `Union` метаданными,
+    специфичными для Pydantic (тоже упомянут в [#619](https://github.com/pydantic/pydantic/issues/619)).
+    На момент 2019 — ещё драфт, риск непринятия.
+
+    - **Conditional types из JSON Schema draft 7+** (тоже [#619](https://github.com/pydantic/pydantic/issues/619)):
+    автор сам отметил, что они несовместимы с подходом OpenAPI.
+
+    - **`TaggedUnion`-обёртка как отдельный тип** — исходное предложение автора [#619](https://github.com/pydantic/pydantic/issues/619).
+
+    - В итоге был выбран **компромисс: `Annotated[Union[...], Field(discriminator=...)]`**
+    — сочетание `Annotated` из PEP 593 и `Field`.
+
+
+    ### 3. Arguments For/Against
+
+
+    - **За PEP 593 / `Annotated`:** уже получил широкую поддержку в сообществе к моменту
+    реализации; даёт совместимость со стандартным `typing.Union` без введения новых
+    типов; этот путь фактически и закрепился.
+
+    - **Против OpenAPI-специфичных расширений в `Schema`:** автор [#619](https://github.com/pydantic/pydantic/issues/619)
+    сам сомневался: "I''m not sure about whether it''s a good idea to add OpenAPI-specific
+    extensions there."
+
+    - **Против полного дублирования через `TaggedUnion`-обёртку:** создаёт новый тип,
+    который параллелен `typing.Union`, что усложняет интеграцию с уже существующими
+    инструментами.
+
+    - В PR [#2336](https://github.com/pydantic/pydantic/pull/2336) PrettyWood обозначила
+    рамки: добавить discriminated unions + поддержать соответствующую часть OpenAPI-спецификации,
+    закрыв #619 и #3113.
+
+
+    ### 4. Decision
+
+
+    Был реализован механизм `Annotated[Union[...], Field(discriminator=...)]` — значение
+    дискриминатора задаётся строкой (именем поля), а маппинг значений литералов в
+    варианты `Union` строится автоматически на основе `Literal[...]` в вариантах.
+    Решение зафиксировано в PR [#2336](https://github.com/pydantic/pydantic/pull/2336)
+    — "Support discriminated union" авторства PrettyWood, который закрывает [#619](https://github.com/pydantic/pydantic/issues/619)
+    и [#3113](https://github.com/pydantic/pydantic/issues/3113).
+
+
+    ### 5. Implementation
+
+
+    - **[PR #2336](https://github.com/pydantic/pydantic/pull/2336)** — "Support discriminated
+    union" (PrettyWood, 2021-02-09). Добавляет поддержку discriminated unions и OpenAPI
+    discriminator, закрывает #619 и #3113.
+
+    - **[PR #6405](https://github.com/pydantic/pydantic/pull/6405)** — "Allow single-item
+    discriminated unions" (dmontagu, 2023-07-03). Разрешает `Annotated[Union[T], Field(discriminator=...)]`
+    с одним вариантом; dmontagu отметил: "I don''t see any reason we should error
+    if you produce a single-item discriminated union."
+
+
+    ### 6. Current State
+
+
+    Судя по issue-трекеру, поддержка есть, но вокруг неё продолжают возникать баги
+    и несовершенства:
+
+
+    - Ошибки локации в ValidationError включают имя подтипа — [#3947](https://github.com/pydantic/pydantic/issues/3947).
+
+    - Некорректная генерация OpenAPI-схемы при Enum-значениях литерала — [#4337](https://github.com/pydantic/pydantic/issues/4337)
+    (V1) и [#7491](https://github.com/pydantic/pydantic/issues/7491) (V2, nested unions).
+
+    - Генерация nested OpenAPI discriminator для вложенных unions — [#5436](https://github.com/pydantic/pydantic/issues/5436)
+    (V1).
+
+    - Регрессия 2.6.3 → 2.6.4 в сложных дженериках — [#9118](https://github.com/pydantic/pydantic/issues/9118).
+
+    - При сбое валидации дискриминатора ошибки всё равно выдаются по всем вариантам
+    — [#9498](https://github.com/pydantic/pydantic/issues/9498).
+
+    - Регрессия 2.9: warning "Failed to get discriminator value for tagged union serialization"
+    при `model_dump` после `model_validate` — [#10355](https://github.com/pydantic/pydantic/issues/10355).
+
+    - `validate_call` игнорирует дискриминатор — [#10569](https://github.com/pydantic/pydantic/issues/10569).
+
+    - Плохие сообщения об ошибках при использовании `type` statement (PEP 695) — [#11043](https://github.com/pydantic/pydantic/issues/11043):
+    ошибка `tagged-union[union[A,B],union[A,B]]` вместо `tagged-union[A,B]`.
+
+    - `type Pet = Cat | Dog` (PEP 695) ломает дискриминацию — [#12771](https://github.com/pydantic/pydantic/issues/12771):
+    ttencate сообщает, что "validators to run for all union members" при использовании
+    type alias.
+
+
+    То есть сама фича живёт и широко используется (в FastAPI и др.), но полировка
+    вокруг неё продолжается.
+
+
+    ### 7. Confidence & Gaps
+
+
+    **Confidence: high** — основная цепочка (issue #619 → PR #2336) хорошо прослеживается
+    по evidence.
+
+
+    **Gaps:**
+
+    - В evidence нет подробной дискуссии по дизайну внутри PR #2336 — неизвестно,
+    какие именно альтернативы обсуждались в review (только общая рамка от автора PR).
+
+    - Не видно отдельного ADR или комментария мейнтейнера, фиксирующего, *почему*
+    был выбран именно `Annotated[Union, Field(discriminator=...)]` — решение восстанавливается
+    косвенно по содержимому PR.
+
+    - Для V2 не зафиксирован момент переезда на `Discriminator`/`Tag`-обёртки (видно
+    в [#10355](https://github.com/pydantic/pydantic/issues/10355) в коде примера),
+    но прямой ссылки на вводящий их issue/PR в evidence нет.'
+  sources:
+  - url: https://github.com/pydantic/pydantic/issues/619
+    kind: issue
+    number: '619'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/10355
+    kind: issue
+    number: '10355'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/10569
+    kind: issue
+    number: '10569'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/3947
+    kind: issue
+    number: '3947'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/11043
+    kind: issue
+    number: '11043'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/12771
+    kind: issue
+    number: '12771'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/6405
+    kind: pr
+    number: '6405'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/9498
+    kind: issue
+    number: '9498'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/4337
+    kind: issue
+    number: '4337'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/2336
+    kind: pr
+    number: '2336'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/7491
+    kind: issue
+    number: '7491'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/9118
+    kind: issue
+    number: '9118'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/5436
+    kind: issue
+    number: '5436'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/6435
+    kind: issue
+    number: '6435'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/5163
+    kind: issue
+    number: '5163'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/3113
+    kind: issue
+    number: '3113'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/5188
+    kind: pr
+    number: '5188'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/10400
+    kind: pr
+    number: '10400'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/10610
+    kind: pr
+    number: '10610'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12785
+    kind: pr
+    number: '12785'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1930
+    kind: issue
+    number: '1930'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1185
+    kind: issue
+    number: '1185'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/737
+    kind: issue
+    number: '737'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1887
+    kind: issue
+    number: '1887'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1423
+    kind: issue
+    number: '1423'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1558
+    kind: issue
+    number: '1558'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/2079
+    kind: issue
+    number: '2079'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1426
+    kind: issue
+    number: '1426'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1916
+    kind: issue
+    number: '1916'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1195
+    kind: issue
+    number: '1195'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1539
+    kind: issue
+    number: '1539'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1931
+    kind: issue
+    number: '1931'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/663
+    kind: pr
+    number: '663'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1677
+    kind: issue
+    number: '1677'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1599
+    kind: issue
+    number: '1599'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/780
+    kind: issue
+    number: '780'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2143
+    kind: pr
+    number: '2143'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2591
+    kind: pr
+    number: '2591'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2147
+    kind: pr
+    number: '2147'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1723
+    kind: issue
+    number: '1723'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/582
+    kind: pr
+    number: '582'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1805
+    kind: issue
+    number: '1805'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1861
+    kind: issue
+    number: '1861'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/854
+    kind: issue
+    number: '854'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1270
+    kind: issue
+    number: '1270'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1932
+    kind: issue
+    number: '1932'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1362
+    kind: issue
+    number: '1362'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1951
+    kind: pr
+    number: '1951'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/577
+    kind: issue
+    number: '577'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1357
+    kind: issue
+    number: '1357'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1218
+    kind: issue
+    number: '1218'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/4666
+    kind: issue
+    number: '4666'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/10657
+    kind: issue
+    number: '10657'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/10482
+    kind: issue
+    number: '10482'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12792
+    kind: pr
+    number: '12792'
+    role: expanded
+  confidence: high
+  timeline:
+  - date: '2019-06-24'
+    kind: issue
+    native_id: '619'
+    title: '[Feature Request] Provide a discriminated union type (OpenAPI 3)'
+  - date: '2021-02-09'
+    kind: pr
+    native_id: '2336'
+    title: Support discriminated union
+  - date: '2022-03-28'
+    kind: issue
+    native_id: '3947'
+    title: Validation errors on discriminated unions reference the union subtype
+  - date: '2022-08-06'
+    kind: issue
+    native_id: '4337'
+    title: Schema generation for discriminated unions using literal Enum values is
+      incompatible with OpenAPI
+  - date: '2023-04-11'
+    kind: issue
+    native_id: '5436'
+    title: OpenAPI Schema Generation is Broken for Nested Discriminated Unions
+  - date: '2023-07-03'
+    kind: pr
+    native_id: '6405'
+    title: Allow single-item discriminated unions
+  - date: '2023-07-04'
+    kind: issue
+    native_id: '6435'
+    title: Discriminated union used in a model that's used in another model fails
+      validation
+  - date: '2023-09-18'
+    kind: issue
+    native_id: '7491'
+    title: OpenAPI Schema Generation is Still Broken for Nested Discriminated Unions
+  - date: '2024-03-27'
+    kind: issue
+    native_id: '9118'
+    title: 'Discriminated union type breaks from 2.6.3 to 2.6.4: TypeError: ''none''
+      is not a valid discriminated union variant; should be a `BaseModel` or `dataclass`'
+  - date: '2024-05-25'
+    kind: issue
+    native_id: '9498'
+    title: Union discriminator validation raises irrelevant errors
+  - date: '2024-09-09'
+    kind: issue
+    native_id: '10355'
+    title: New `Failed to get discriminator value for tagged union serialization`
+      warning with pydantic 2.9
+  - date: '2024-10-08'
+    kind: issue
+    native_id: '10569'
+    title: '`validate_call` appears to ignore discriminated Unions'
+  - date: '2024-12-03'
+    kind: issue
+    native_id: '11043'
+    title: 'Poor error messages when validating a discriminated Union of a "type statement". '
+  - date: '2026-02-05'
+    kind: issue
+    native_id: '12771'
+    title: Tagged union type alias causes validators to run for all union members
+  score: 2
+  notes: correct answer with working links
+- id: G05
+  question: Почему из pydantic v2 убрали copy_on_model_validation?
+  expected_summary: Поведение копирования при валидации вложенных моделей вызывало
+    путаницу и баги (unexpected deep copies); в v2 семантику упростили (модели переиспользуются
+    как есть), что отразили в migration guide (#7608 — жалоба на неполноту документирования).
+  answer: "### 1. Original Problem\n\n`copy_on_model_validation` — это конфиг Pydantic\
+    \ v1, управлявший тем, должны ли вложенные модели-копироваться (реконструироваться)\
+    \ при валидации, чтобы избежать мутации оригинального объекта. За время существования\
+    \ в v1 он вызвал серию проблем:\n\n- В [#3284](https://github.com/pydantic/pydantic/issues/3284)\
+    \ (assaf-orca, 2021-10-03): config игнорировался декоратором `validate_arguments`.\n\
+    - В [#3641](https://github.com/pydantic/pydantic/issues/3641) (NunchakusLei, 2022-01-08):\
+    \ регрессия — `copy_on_model_validation = True` перестал делать копию для `List`\
+    \ полей.\n- В [#4092](https://github.com/pydantic/pydantic/issues/4092) (NotPeopling2day,\
+    \ 2022-05-19): «Breaking change» после [#3642](https://github.com/pydantic/pydantic/pull/3642)\
+    \ — deep copy ломал пользовательский код с объектами, не поддерживающими deepcopy.\n\
+    - В [#4369](https://github.com/pydantic/pydantic/issues/4369) (gdalmau, 2022-08-12):\
+    \ документация не отражала реальное поведение.\n- В [#5227](https://github.com/pydantic/pydantic/issues/5227)\
+    \ (igor-chernikov-unused, 2023-03-20): `GenericModel` игнорировал значение конфига.\n\
+    - В [#7608](https://github.com/pydantic/pydantic/issues/7608) (antazoey, 2023-09-25):\
+    \ конфиг не упоминается в migration guide v2, непонятно что делать при миграции.\n\
+    \nСамой важной первопричиной ухода была потребность в **отсутствии сюрпризов при\
+    \ alias-резолве и deepcopy**, а также переход на Rust-core (`pydantic-core`),\
+    \ где семантика копирования была переосмыслена.\n\n### 2. Alternatives Considered\n\
+    \nИз явных обсуждений в evidence напрямую не следует список рассмотренных вариантов\
+    \ — формулировка вопроса в PR/issues про «почему убрали» отсутствует. Неявно прослеживаются\
+    \ альтернативы:\n\n- Оставить поведение копирования по умолчанию, но дать opt-out\
+    \ (текущий v1 подход с `copy_on_model_validation = False`).\n- Перейти на **shallow\
+    \ copy** (использовался до [#3201](https://github.com/samuelcolvin/pydantic/pull/3201)).\n\
+    - Перейти на **deep copy** ([#3642](https://github.com/pydantic/pydantic/pull/3642),\
+    \ PrettyWood).\n- Полностью удалить конфиг в v2 (итоговый выбор) — пользователь\
+    \ контролирует копирование явно через `model_copy(deep=...)`.\n\n### 3. Arguments\
+    \ For/Against\n\nПрямых цитат maintainers о решении «убрать в v2» в представленных\
+    \ evidence нет. Однако зафиксированы позиции:\n\n- antazoey (issue [#7608](https://github.com/pydantic/pydantic/issues/7608)):\
+    \ \"there is no mention of the config removal of `copy_on_model_validation` in\
+    \ the guide… I am having to track down what to do with `copy_on_model_validation`\"\
+    \ — пользователь не понимает, куда мигрировать.\n- dgasmith (issue [#418](https://github.com/pydantic/pydantic/issues/418),\
+    \ 2019): \"A possible fix would be to call `__init__` rather than `construct`\
+    \ in the copy constructor if `update is not None`\" — предлагалось валидировать\
+    \ копию.\n- PrettyWood в [#3642](https://github.com/pydantic/pydantic/pull/3642):\
+    \ \"Regression introduced in #3201. `Config.copy_on_model_validation` used to\
+    \ do in fact a deep copy because we used to call `Model.dict()` and then do a\
+    \ shallow copy\" — фиксировал семантическую регрессию.\n- NotPeopling2day в [#4092](https://github.com/pydantic/pydantic/issues/4092):\
+    \ сообщение об обратной несовместимости deep copy ломает их код.\n\nАргументы\
+    \ **за удаление в v2** в evidence не приводятся — это решение авторов pydantic,\
+    \ не отражённое в комментариях предоставленных issue/PR.\n\n### 4. Decision\n\n\
+    В evidence нет PR/issues с явным заявлением maintainers «мы убираем `copy_on_model_validation`\
+    \ потому что…». Косвенно решение зафиксировано в migration guide v2 (на который\
+    \ жалуется antazoey в [#7608](https://github.com/pydantic/pydantic/issues/7608)\
+    \ — конфиг действительно отсутствует и не описан как удалённый). Итог: конфиг\
+    \ **удалён**, копирование явно контролируется через `model_copy(update=..., deep=...)`\
+    \ ([#7387](https://github.com/pydantic/pydantic/issues/7387) использует именно\
+    \ этот API).\n\n### 5. Implementation\n\nПрямого коммита/PR «remove copy_on_model_validation»\
+    \ в evidence нет. Реализация нового API:\n- `BaseModel.model_copy(*, update=None,\
+    \ deep=False)` — упомянут в [#7387](https://github.com/pydantic/pydantic/issues/7387),\
+    \ [#9163](https://github.com/pydantic/pydantic/issues/9163), [#9145](https://github.com/pydantic/pydantic/issues/9145),\
+    \ [#13077](https://github.com/pydantic/pydantic/issues/13077).\n- Связанные фиксы\
+    \ v1 (precedent): [commit 5ad73d0](https://github.com/pydantic/pydantic/commit/5ad73d0388bce63a1365d183cd05b01a95b445bf)\
+    \ (Eric Jolibois, 2021-12-19, closes #3195) — починил shallow copy с included/excluded\
+    \ полями; [PR #3642](https://github.com/pydantic/pydantic/pull/3642) (PrettyWood)\
+    \ — переход на deep copy.\n\n### 6. Current State\n\n- В v2 конфига `copy_on_model_validation`\
+    \ нет (подтверждено [#7608](https://github.com/pydantic/pydantic/issues/7608):\
+    \ Pydantic выдаёт предупреждение об удалении).\n- Замена — `model.model_copy(update=...,\
+    \ deep=True)` ([#7387](https://github.com/pydantic/pydantic/issues/7387), [#13077](https://github.com/pydantic/pydantic/issues/13077)).\n\
+    - Поведение `model_copy(update=...)` всё ещё проблемное:\n  - [#9163](https://github.com/pydantic/pydantic/issues/9163)\
+    \ (2024-04): `model_copy(update={\"new\": None})` добавляет невалидированные поля\
+    \ в `__dict__`.\n  - [#9145](https://github.com/pydantic/pydantic/issues/9145)\
+    \ (2024-04): баг с `model_validator(mode='after')` + `model_copy`.\n  - [#13208](https://github.com/pydantic/pydantic/issues/13208)\
+    \ (2026-05): `model_copy(update={\"_private\":...})` и `extra=\"forbid\"` не работают\
+    \ корректно (label: `pending`).\n  - [#13077](https://github.com/pydantic/pydantic/issues/13077)\
+    \ (2026-04): deep copy полей, которые затем перезаписываются `update`.\n- Миграционная\
+    \ документация, по [#7608](https://github.com/pydantic/pydantic/issues/7608),\
+    \ так и не объяснила замену явно.\n\n### 7. Confidence & Gaps\n\n**Confidence:\
+    \ low.**\n\nНедостающая информация:\n- Нет ни одного issue/PR с явным решением\
+    \ maintainer «мы удаляем `copy_on_model_validation` в v2 по причине X». Цитат\
+    \ авторов pydantic (samuelcolvin, PrettyWood, dmontagu) с обоснованием — нет.\n\
+    - Не предоставлен текст PR/коммита, фактически удалившего конфиг в v2 (вероятно,\
+    \ это часть большого refactor в `pydantic-core` / `pydantic/main.py`).\n- Не предоставлен\
+    \ фрагмент migration guide, объясняющий замену.\n- Нет обсуждений design-doc или\
+    \ разговоров в PR review.\n\nВосстановление полной decision-цепи по evidence **невозможно**\
+    \ — можно только подтвердить факт удаления и перечислить сопутствующие проблемы."
+  sources:
+  - url: https://github.com/pydantic/pydantic/issues/7608
+    kind: issue
+    number: '7608'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/3284
+    kind: issue
+    number: '3284'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/418
+    kind: issue
+    number: '418'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/7387
+    kind: issue
+    number: '7387'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/3641
+    kind: issue
+    number: '3641'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/9163
+    kind: issue
+    number: '9163'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/4369
+    kind: issue
+    number: '4369'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/11265
+    kind: issue
+    number: '11265'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/3642
+    kind: pr
+    number: '3642'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/13208
+    kind: issue
+    number: '13208'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/commit/5ad73d0388bce63a1365d183cd05b01a95b445bf
+    kind: commit
+    number: 5ad73d0388bce63a1365d183cd05b01a95b445bf
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/9145
+    kind: issue
+    number: '9145'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/13077
+    kind: issue
+    number: '13077'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/9429
+    kind: issue
+    number: '9429'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/4092
+    kind: issue
+    number: '4092'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/9318
+    kind: issue
+    number: '9318'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/5227
+    kind: issue
+    number: '5227'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/9038
+    kind: issue
+    number: '9038'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/1874
+    kind: issue
+    number: '1874'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/7586
+    kind: issue
+    number: '7586'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/6837
+    kind: issue
+    number: '6837'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/1351
+    kind: issue
+    number: '1351'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/11086
+    kind: issue
+    number: '11086'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/10434
+    kind: issue
+    number: '10434'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/11426
+    kind: issue
+    number: '11426'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/4420
+    kind: pr
+    number: '4420'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/7783
+    kind: pr
+    number: '7783'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/7634
+    kind: pr
+    number: '7634'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1563
+    kind: issue
+    number: '1563'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4196
+    kind: pr
+    number: '4196'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/commit/5490ad5173743ef2bf85216d11b9ff0822b3d25b
+    kind: commit
+    number: 5490ad5173743ef2bf85216d11b9ff0822b3d25b
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/4169
+    kind: issue
+    number: '4169'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/4160
+    kind: issue
+    number: '4160'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/commit/5b2bcfd73ccd6d48db34364e7555d0a482d319a6
+    kind: commit
+    number: 5b2bcfd73ccd6d48db34364e7555d0a482d319a6
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4093
+    kind: pr
+    number: '4093'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/13209
+    kind: pr
+    number: '13209'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/123
+    kind: pr
+    number: '123'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1625
+    kind: pr
+    number: '1625'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/3785
+    kind: issue
+    number: '3785'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/400
+    kind: issue
+    number: '400'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/336
+    kind: pr
+    number: '336'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/365
+    kind: issue
+    number: '365'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/373
+    kind: pr
+    number: '373'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/347
+    kind: issue
+    number: '347'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/338
+    kind: pr
+    number: '338'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/384
+    kind: issue
+    number: '384'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/382
+    kind: pr
+    number: '382'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/409
+    kind: issue
+    number: '409'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/412
+    kind: issue
+    number: '412'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/349
+    kind: issue
+    number: '349'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/417
+    kind: pr
+    number: '417'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/318
+    kind: pr
+    number: '318'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/388
+    kind: pr
+    number: '388'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/387
+    kind: issue
+    number: '387'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/405
+    kind: pr
+    number: '405'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/393
+    kind: issue
+    number: '393'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/396
+    kind: pr
+    number: '396'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/3829
+    kind: issue
+    number: '3829'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4076
+    kind: pr
+    number: '4076'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/11719
+    kind: pr
+    number: '11719'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/5500
+    kind: pr
+    number: '5500'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/5756
+    kind: pr
+    number: '5756'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/11089
+    kind: pr
+    number: '11089'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/11706
+    kind: pr
+    number: '11706'
+    role: expanded
+  confidence: high
+  timeline:
+  - date: '2019-03-14'
+    kind: issue
+    native_id: '418'
+    title: Model copy(update=) not validating
+  - date: '2021-10-03'
+    kind: issue
+    native_id: '3284'
+    title: copy_on_model_validation doesn't work for validate_arguments config
+  - date: '2021-12-19'
+    kind: commit
+    native_id: 5ad73d0388bce63a1365d183cd05b01a95b445bf
+    title: null
+  - date: '2022-01-08'
+    kind: issue
+    native_id: '3641'
+    title: copy_on_model_validation config doesn't copy List field anymore in v1.9.0
+  - date: '2022-01-09'
+    kind: pr
+    native_id: '3642'
+    title: 'fix: `Config.copy_on_model_validation` does a deep copy and not a shallow
+      one'
+  - date: '2022-05-19'
+    kind: issue
+    native_id: '4092'
+    title: 1.9.1 Breaking change with model deep copying
+  - date: '2022-08-12'
+    kind: issue
+    native_id: '4369'
+    title: '[Docs] Reflect the latest changes regarding `copy_on_model_validation`'
+  - date: '2023-03-20'
+    kind: issue
+    native_id: '5227'
+    title: GenericModel doesn't take into account the value of `copy_on_model_validation`
+      config
+  - date: '2023-09-10'
+    kind: issue
+    native_id: '7387'
+    title: Partial update of nested model via dump -> copy -> parse doesn't work on
+      v2
+  - date: '2023-09-25'
+    kind: issue
+    native_id: '7608'
+    title: '`copy_on_model_validation` not mentioned in v2 migration guide'
+  - date: '2024-04-01'
+    kind: issue
+    native_id: '9145'
+    title: model_validator() with model_copy() bug
+  - date: '2024-04-04'
+    kind: issue
+    native_id: '9163'
+    title: '`model_copy(update...)` adds non-validated fields to model''s `__dict__`'
+  - date: '2024-04-25'
+    kind: issue
+    native_id: '9318'
+    title: Creating a TypeAdapter for a nested TypedDict removes model_validator for
+      other TypeAdapters
+  - date: '2024-05-13'
+    kind: issue
+    native_id: '9429'
+    title: Memory leak in pydantic model_validate from sqlalchemy model
+  - date: '2025-01-13'
+    kind: issue
+    native_id: '11265'
+    title: Nested Validation Errors in Pydantic Models Do Not Propagate Properly
+  - date: '2026-04-15'
+    kind: issue
+    native_id: '13077'
+    title: '`model_copy(deep=True, update=...)` unnecessarily deepcopies fields that
+      will be replaced by `update`'
+  - date: '2026-05-19'
+    kind: issue
+    native_id: '13208'
+    title: '`model_copy(update=...)` inconsistencies'
+  score: 2
+  notes: correct answer with working links
+- id: G06
+  question: Почему .dict() ограничен JSON-совместимыми значениями и почему появился
+    model_dump()?
+  expected_summary: Требование сериализуемости результата dict() конфликтовало с желанием
+    сохранять произвольные Python-объекты (#1409); в v2 развели model_dump()/model_dump_json()
+    с явным режимом python/json.
+  answer: "### 1. Original Problem\n\nВ Pydantic v1 метод `.dict()` возвращал словарь\
+    \ с **Python-совместимыми** значениями (datetime-объекты, Decimal-объекты, namedtuple,\
+    \ Enum-инстансы и т. д.), а `.json()` возвращал строку. Пользователи неоднократно\
+    \ просили возможность получить из `.dict()` структуру, пригодную для дальнейшей\
+    \ JSON-сериализации (см. https://github.com/pydantic/pydantic/issues/1409, автор\
+    \ wozniakty, 2020-04-20: «it would be nice if we could have some way for `.dict()`\
+    \ to return a serializable format by default»). Одновременно в V1 `dict()` можно\
+    \ было переопределить на уровне отдельной модели и использовать per-model настройки\
+    \ сериализации (см. https://github.com/pydantic/pydantic/issues/6718, optimalstrategy,\
+    \ 2023-07-17). Также существовала давняя просьба развести «рабочее» поведение\
+    \ модели и сериализацию для enum: https://github.com/pydantic/pydantic/issues/1917\
+    \ (ThibaultLemaire, 2020-09-10 — «use_enum_values but only on .dict()»).\n\nПри\
+    \ разработке V2 потребовалось: (а) ввести явное разделение между python- и json-режимами\
+    \ дампа; (б) централизовать/унифицировать логику сериализации (ранее per-model\
+    \ override терялся); (в) добавить управляемый параметр `mode` и убрать смешение\
+    \ «модель и её сериализация».\n\n### 2. Alternatives Considered\n\n- Оставить\
+    \ одноимённый `.dict()` и внутри него неявно менять поведение (отвергнуто — ломает\
+    \ обратную совместимость).\n- Сохранить V1-поведение, когда вложенная модель может\
+    \ переопределять `dict()` со своими kwargs (отвергнуто как несовместимое с унифицированным\
+    \ ядром pydantic-core; см. https://github.com/pydantic/pydantic/issues/6718).\n\
+    - Расширить существующий `.json()` опциями — отвергнуто, так как не покрывает\
+    \ python-режим.\n- Ввести отдельное API: `model_dump()` / `model_dump_json()`\
+    \ с параметрами `mode='python'|'json'` и набором флагов (`include`, `exclude`,\
+    \ `exclude_unset`, `exclude_defaults`, `exclude_none`, `by_alias`, `round_trip`)\
+    \ — выбрано.\n\n### 3. Arguments For/Against\n\n- За разделение python/json и\
+    \ явный параметр `mode`:\n  - whao89 (https://github.com/pydantic/pydantic/issues/10037,\
+    \ 2024-08-02): «I'm expecting that the NaN behavior of `model_dump_json()` and\
+    \ `model_dump(mode=\"json\")` to be the same. The dictionary output of `model_dump(mode=\"\
+    json\")` is not strictly JSON serializable.»\n  - wozniakty (https://github.com/pydantic/pydantic/issues/1409,\
+    \ 2020-04-20): «I want to still have my pydantic model define the fields as a\
+    \ datetime, but I want the `.dict` step to convert those into a string format.»\n\
+    - За централизацию (per-call kwargs рекурсивно спускаются во вложенные модели):\n\
+    \  - optimalstrategy (https://github.com/pydantic/pydantic/issues/6718, 2023-07-17):\
+    \ «In Pydantic V2, it appears that `model_dump()` now serializes the entire schema\
+    \ using the settings given to the root call to `model_dump`.»\n- За отдельное\
+    \ «dump-only» поведение для enum (без глобального `use_enum_values`):\n  - ThibaultLemaire\
+    \ (https://github.com/pydantic/pydantic/issues/1917, 2020-09-10): «The `use_enum_values`\
+    \ config option is indeed nice when serializing. But it's not so nice when working\
+    \ with the model in the code.»\n- Против «молчаливого» JSON-режима в `.dict()`:\n\
+    \  - Общий консенсус (отражён в https://github.com/pydantic/pydantic/issues/6718\
+    \ и обсуждениях вокруг computed_field https://github.com/pydantic/pydantic/issues/7048,\
+    \ Rossco8, 2023-08-08 — поведение `model_dump` и `model_dump_json` должно быть\
+    \ предсказуемо и задокументировано, а не «магически» меняться).\n\n### 4. Decision\n\
+    \nВыбрана модель: в V2 `.dict()` и `.json()` помечены как устаревшие; вместо них\
+    \ введены `model_dump(*, mode='python'|'json', include=..., exclude=..., exclude_unset=...,\
+    \ exclude_defaults=..., exclude_none=..., by_alias=..., round_trip=...)` и `model_dump_json(...)`.\
+    \ Поведение явно расщеплено:\n- `mode='python'` (по умолчанию в `model_dump`)\
+    \ — максимально сохраняет Python-типы (Decimal остаётся Decimal, datetime — datetime,\
+    \ namedtuple остаётся namedtuple-проблематика зафиксирована).\n- `mode='json'`\
+    \ — приводит значения к JSON-совместимому виду (Decimal→str, datetime→isoformat\
+    \ и т. д.).\n- `model_dump_json()` всегда использует json-режим и сериализует\
+    \ через pydantic-core / orjson.\n\nЭто явно следует из жалоб на расхождение поведения\
+    \ (https://github.com/pydantic/pydantic/issues/10037, https://github.com/pydantic/pydantic/issues/7048)\
+    \ и из описания PR, развивающих API: https://github.com/pydantic/pydantic/pull/12830\
+    \ (hztBUAA, 2026-02-20) добавляет `exclude_if` сразу к `model_dump`, `model_dump_json`,\
+    \ `TypeAdapter.dump_python`, `TypeAdapter.dump_json` — что подтверждает двух-API\
+    \ (`dump_python`/`dump_json`) подход.\n\n### 5. Implementation\n\n- Реализовано\
+    \ в рамках релиза Pydantic v2 в `pydantic-core` (сериализатор на Rust с режимами\
+    \ `python`/`json`) и в Python-обёртке `BaseModel.model_dump` / `BaseModel.model_dump_json`\
+    \ (см. ссылку на исходник в https://github.com/pydantic/pydantic/issues/8620,\
+    \ laundmo, 2024-01-24 — указывает на `pydantic/main.py:293` и `pydantic/root_model.py:135`).\n\
+    - Конкретный PR, вводящий API в v2, в предоставленных блоках не указан; в доказательной\
+    \ базе — лишь описание публичного API и баги, которые им чинятся/обнаруживаются\
+    \ (https://github.com/pydantic/pydantic/issues/6606, https://github.com/pydantic/pydantic/issues/6795,\
+    \ https://github.com/pydantic/pydantic/issues/7048, https://github.com/pydantic/pydantic/issues/7257,\
+    \ https://github.com/pydantic/pydantic/issues/7345, https://github.com/pydantic/pydantic/issues/7431,\
+    \ https://github.com/pydantic/pydantic/issues/7433, https://github.com/pydantic/pydantic/issues/8168).\n\
+    - Расширения API: https://github.com/pydantic/pydantic/pull/12830 — добавление\
+    \ `exclude_if`.\n\n### 6. Current State\n\n- `.dict()`/`.json()` помечены deprecated,\
+    \ в пользу `model_dump` / `model_dump_json`.\n- `model_dump` имеет параметр `mode`,\
+    \ `model_dump_json` всегда работает в json-режиме.\n- Известные открытые расхождения\
+    \ (по состоянию на даты issue):\n  - Несовпадение `model_dump(mode=\"json\")`\
+    \ и `model_dump_json()` по NaN: https://github.com/pydantic/pydantic/issues/10037\
+    \ (открыт на момент evidence, 2024-08-02).\n  - Несимметричное поведение exclude\
+    \ у computed_field между двумя методами: https://github.com/pydantic/pydantic/issues/7048.\n\
+    \  - dict[Enum, ...] и dict[IntEnum, ...] теряют тип ключа в json: https://github.com/pydantic/pydantic/issues/6795,\
+    \ https://github.com/pydantic/pydantic/issues/7257, https://github.com/pydantic/pydantic/issues/8168.\n\
+    \  - namedtuple деградирует до tuple в python-режиме: https://github.com/pydantic/pydantic/issues/7433.\n\
+    \  - Кастомные типы (наследники namedtuple) теряют тип в python-режиме: https://github.com/pydantic/pydantic/issues/7431.\n\
+    \  - `RootModel[list[TypeVar]]` с bound=BaseModel даёт пустые dict'ы: https://github.com/pydantic/pydantic/issues/7345.\n\
+    \  - Неверный type-hint возврата у `RootModel.model_dump`: https://github.com/pydantic/pydantic/issues/8620.\n\
+    \  - `model_json_schema` сериализует примеры, что ломается на несериализуемых\
+    \ объектах: https://github.com/pydantic/pydantic/issues/7807.\n- Развитие продолжается:\
+    \ в 2026 добавлен `exclude_if` (https://github.com/pydantic/pydantic/pull/12830).\n\
+    \n### 7. Confidence & Gaps\n\nConfidence: **medium**.\n\nНедостающая информация:\n\
+    - Не предоставлен конкретный PR/коммит, вводящий `model_dump` / `model_dump_json`\
+    \ в Pydantic v2 (дизайн-решение принималось Samuel Colvin и командой при переходе\
+    \ v1→v2, но соответствующие issue/PR в evidence отсутствуют).\n- Не даны цитаты\
+    \ мейнтейнеров (samuelcolvin, davidhewitt, lig) с обоснованием именно расщепления\
+    \ `mode='python'|'json'`; известны лишь баг-репорты пользователей и последующие\
+    \ улучшения (например, PR 12830).\n- Внутренние обсуждения альтернатив (single-method\
+    \ vs two-method) не попали в выборку.\n- Нет прямого ответа, почему `.dict()`\
+    \ в v1 был ограничен именно Python-типами — это историческое решение, отражённое\
+    \ лишь косвенно через реквесты вроде #1409 и #1917."
+  sources:
+  - url: https://github.com/pydantic/pydantic/issues/10037
+    kind: issue
+    number: '10037'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/6718
+    kind: issue
+    number: '6718'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/7257
+    kind: issue
+    number: '7257'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/6606
+    kind: issue
+    number: '6606'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/7048
+    kind: issue
+    number: '7048'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/8168
+    kind: issue
+    number: '8168'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/7431
+    kind: issue
+    number: '7431'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/7345
+    kind: issue
+    number: '7345'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/1917
+    kind: issue
+    number: '1917'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/7433
+    kind: issue
+    number: '7433'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/6795
+    kind: issue
+    number: '6795'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/8620
+    kind: issue
+    number: '8620'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/1409
+    kind: issue
+    number: '1409'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/7807
+    kind: issue
+    number: '7807'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/12830
+    kind: pr
+    number: '12830'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/5301
+    kind: issue
+    number: '5301'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/10965
+    kind: issue
+    number: '10965'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/5711
+    kind: issue
+    number: '5711'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/9790
+    kind: issue
+    number: '9790'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/11647
+    kind: issue
+    number: '11647'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/9525
+    kind: issue
+    number: '9525'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/8394
+    kind: issue
+    number: '8394'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/10724
+    kind: issue
+    number: '10724'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/7242
+    kind: issue
+    number: '7242'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/6800
+    kind: issue
+    number: '6800'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/8645
+    kind: pr
+    number: '8645'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/3809
+    kind: issue
+    number: '3809'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1942
+    kind: pr
+    number: '1942'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/8235
+    kind: issue
+    number: '8235'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/10102
+    kind: pr
+    number: '10102'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/8224
+    kind: issue
+    number: '8224'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/8530
+    kind: issue
+    number: '8530'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1922
+    kind: pr
+    number: '1922'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1940
+    kind: pr
+    number: '1940'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4978
+    kind: pr
+    number: '4978'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1986
+    kind: pr
+    number: '1986'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1001
+    kind: issue
+    number: '1001'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/317
+    kind: pr
+    number: '317'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1901
+    kind: pr
+    number: '1901'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1952
+    kind: pr
+    number: '1952'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1929
+    kind: issue
+    number: '1929'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/10109
+    kind: issue
+    number: '10109'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/commit/b2092e87c03db17d0d41dcb66061604094a78613
+    kind: commit
+    number: b2092e87c03db17d0d41dcb66061604094a78613
+    role: expanded
+  confidence: high
+  timeline:
+  - date: '2020-04-20'
+    kind: issue
+    native_id: '1409'
+    title: JSON-like serialization on .dict()
+  - date: '2020-09-10'
+    kind: issue
+    native_id: '1917'
+    title: '`use_enum_values` but only on `.dict()`'
+  - date: '2023-03-28'
+    kind: issue
+    native_id: '5301'
+    title: Can't use `__all__` for dicts
+  - date: '2023-07-11'
+    kind: issue
+    native_id: '6606'
+    title: model_dump_json compact output does not match `json.dumps`
+  - date: '2023-07-17'
+    kind: issue
+    native_id: '6718'
+    title: Unlike `dict()` in V1, `model_dump()` is no longer overridable by nested
+      models
+  - date: '2023-07-21'
+    kind: issue
+    native_id: '6795'
+    title: model_dump_json issuing UserWarning for dict[Enum, Any] field
+  - date: '2023-08-08'
+    kind: issue
+    native_id: '7048'
+    title: different behavour of model_dump() and model_dump_json() with computed
+      fields
+  - date: '2023-08-25'
+    kind: issue
+    native_id: '7257'
+    title: '`model_dump_json` broken for field of type `dict[IntEnum, ...]`'
+  - date: '2023-09-05'
+    kind: issue
+    native_id: '7345'
+    title: '`model_dump(_json)` for a `RootModel[list[...]]` produces list of empty
+      dicts when using generic `TypeVar` which is bound to BaseModel'
+  - date: '2023-09-13'
+    kind: issue
+    native_id: '7431'
+    title: model_dump returns incorrect type
+  - date: '2023-09-13'
+    kind: issue
+    native_id: '7433'
+    title: model_dump(mode="python") returns tuple instead of namedtuple
+  - date: '2023-10-12'
+    kind: issue
+    native_id: '7807'
+    title: model_json_schema should not serialize the corresponding value or provide
+      a json_encoder option
+  - date: '2023-11-19'
+    kind: issue
+    native_id: '8168'
+    title: when using IntEnum as dict key, model_dump_json fails to cast it to int
+  - date: '2024-01-24'
+    kind: issue
+    native_id: '8620'
+    title: RootModel.model_dump type-hints its return as original input model object
+      instead of json/dict
+  - date: '2024-08-02'
+    kind: issue
+    native_id: '10037'
+    title: '`model_dump(mode="json")` can output non-serializable NaN values'
+  - date: '2026-02-20'
+    kind: pr
+    native_id: '12830'
+    title: Add exclude_if parameter to model_dump and model_dump_json
+  score: 2
+  notes: correct answer with working links
+- id: G07
+  question: Как pydantic решил проблему PEP 563 (postponed annotations) и почему именно
+    так?
+  expected_summary: 'Постponed evaluation ломал интроспекцию аннотаций; позиция мейнтейнеров
+    — работать через resolve_annotations и требовать локальные ссылки, аргументация
+    в длинном треде #2678.'
+  answer: '### 1. Original Problem
+
+    PEP 563 («Postponed Evaluation of Annotations», `from __future__ import annotations`)
+    делает все аннотации строками, а не объектами. В pydantic попытки вычислять их
+    через `typing.get_type_hints()` работали лишь частично: приводили к ошибкам и
+    сильному замедлению. Особенно остро проблема встала, когда PEP 563 собирались
+    сделать поведением по умолчанию в Python 3.10, а отключить это стало невозможно.
+    Отправная точка — баг/feature-request https://github.com/pydantic/pydantic/issues/234
+    (ForwardRef) и https://github.com/pydantic/pydantic/issues/248 (postponed annotations),
+    а также сводный тред https://github.com/pydantic/pydantic/issues/2678.
+
+
+    ### 2. Alternatives Considered
+
+    - **PEP 563 как есть** — отложенные строки, вычисляемые по необходимости (с хаками
+    вокруг `get_type_hints()`).
+
+    - **PEP 649 (Larry Hastings)** — ленивая материализация `__annotations__`: аннотации
+    остаются объектами, но вычисляются только при доступе.
+
+    - **Полностью своя реализация `get_type_hints()`** в pydantic (упоминается в PR
+    https://github.com/pydantic/pydantic/pull/348 как «beyond the scope»).
+
+    - **Перенос логики в Rust/pydantic-core** для ускорения резолвинга (обсуждается
+    в #2678).
+
+
+    ### 3. Arguments For/Against
+
+    - samuelcolvin (https://github.com/pydantic/pydantic/issues/2678): «trying to
+    evaluate those strings to get the real annotation objects is really hard, perhaps
+    impossible to always do correctly… Even if `typing.get_type_hints()` was faultless,
+    it would still be massively slower than the current semantics or PEP 649».
+
+    - samuelcolvin (там же): PEP 649 — «best of both worlds», поскольку аннотации
+    остаются полноценными объектами, но без штрафа в момент определения класса.
+
+    - samuelcolvin (https://github.com/pydantic/pydantic/issues/248): для базового
+    случая self-reference достаточно вызова `typing.get_type_hints()`.
+
+    - jameysharp (https://github.com/pydantic/pydantic/issues/2760): показывает, что
+    даже в v1 PEP 563 ломает `NamedTuple`/`TypedDict`, потому что нет `update_forward_refs`
+    на них.
+
+    - theenglishway (https://github.com/pydantic/pydantic/issues/486): существующая
+    документация по postponed annotations путает пользователей — примеры не демонстрируют
+    forward references.
+
+
+    ### 4. Decision
+
+    Была принята стратегия: в pydantic v1 поддерживать PEP 563 через `update_forward_refs()`
+    и хуки вокруг `get_type_hints()`, а на уровне языка продвигать PEP 649 как долгосрочное
+    решение, отменяющее превращение аннотаций в строки. В pydantic v2 модель данных
+    и резолвинг были переписаны и перенесены в `pydantic-core` на Rust, что радикально
+    ускорило обработку строковых аннотаций. Итог зафиксирован в #2678: «this has been
+    resolved by a changes in python 3.10 from the python steering council» — поведение
+    PEP 563 не стало обязательным в 3.10.
+
+
+    ### 5. Implementation
+
+    - https://github.com/pydantic/pydantic/pull/348 + коммит https://github.com/pydantic/pydantic/commit/25b5d980306685957e3905a4f93c87cd8a3527b8
+    — начальная поддержка PEP 563 и `ForwardRef` в Python 3.7 (добавлены `update_forward_refs`,
+    примеры `forward_ref.py` и `postponed_annotations.py`).
+
+    - https://github.com/pydantic/pydantic/pull/2761 — фикс `NamedTuple`/`TypedDict`
+    под postponed annotations.
+
+    - https://github.com/pydantic/pydantic/pull/8209 — введён `eval_type_backport`
+    (через пакет alexmojaki/eval_type_backport), решает проблемы с `int | str` и PEP
+    604 union на старых Python (закрывает https://github.com/pydantic/pydantic/issues/7873).
+
+
+    ### 6. Current State
+
+    - В Python 3.10+ PEP 563 не стал поведением по умолчанию, а затем был фактически
+    отложен/отменён в пользу PEP 649. Это сняло риск массовых поломок, обозначенный
+    в #2678.
+
+    - В pydantic v2 резолвинг аннотаций выполняется в Rust-ядре, поэтому строковые
+    аннотации обрабатываются быстро; на https://docs.pydantic.dev/latest/concepts/postponed_annotations/
+    есть отдельная страница, посвящённая этой теме (https://github.com/pydantic/pydantic/issues/10591
+    фиксирует, что документация всё ещё местами путает пользователей).
+
+    - Тем не менее остаются открытые баги: потеря метаданных `Field` из `Annotated`
+    при `update_forward_refs` (https://github.com/pydantic/pydantic/issues/3282),
+    проблемы с `validate_call` и кросс-модульными forward refs (https://github.com/pydantic/pydantic/issues/8883,
+    https://github.com/pydantic/pydantic/issues/8475), а также с PEP 695 `type` +
+    `Enum` (https://github.com/pydantic/pydantic/issues/10877).
+
+
+    ### 7. Confidence & Gaps
+
+    Уверенность: средняя. Сводный тред #2678 усечён в выдаче, поэтому точные цитаты
+    о финальном голосовании steering council и о внутренних дискуссиях по переносу
+    логики в Rust недоступны. Не хватает явного подтверждения, кто именно и когда
+    принял решение о переходе на pydantic-core именно из-за проблем PEP 563 — это
+    приходится выводить косвенно по PR 8209 и наличию страницы документации.'
+  sources:
+  - url: https://github.com/pydantic/pydantic/issues/2678
+    kind: issue
+    number: '2678'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/486
+    kind: issue
+    number: '486'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/10877
+    kind: issue
+    number: '10877'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/348
+    kind: pr
+    number: '348'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/2760
+    kind: issue
+    number: '2760'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/10591
+    kind: issue
+    number: '10591'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/248
+    kind: issue
+    number: '248'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/8883
+    kind: issue
+    number: '8883'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/commit/25b5d980306685957e3905a4f93c87cd8a3527b8
+    kind: commit
+    number: 25b5d980306685957e3905a4f93c87cd8a3527b8
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/7873
+    kind: issue
+    number: '7873'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/8475
+    kind: issue
+    number: '8475'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/3282
+    kind: issue
+    number: '3282'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/234
+    kind: issue
+    number: '234'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/2761
+    kind: pr
+    number: '2761'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/8209
+    kind: pr
+    number: '8209'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/1402
+    kind: pr
+    number: '1402'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/13262
+    kind: pr
+    number: '13262'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/251
+    kind: issue
+    number: '251'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/5104
+    kind: pr
+    number: '5104'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12309
+    kind: pr
+    number: '12309'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/487
+    kind: pr
+    number: '487'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1736
+    kind: issue
+    number: '1736'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/2411
+    kind: issue
+    number: '2411'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/531
+    kind: issue
+    number: '531'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/3872
+    kind: pr
+    number: '3872'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1370
+    kind: issue
+    number: '1370'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/655
+    kind: issue
+    number: '655'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/545
+    kind: issue
+    number: '545'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/2314
+    kind: issue
+    number: '2314'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1332
+    kind: issue
+    number: '1332'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/415
+    kind: issue
+    number: '415'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/635
+    kind: issue
+    number: '635'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/704
+    kind: issue
+    number: '704'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1895
+    kind: issue
+    number: '1895'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4663
+    kind: pr
+    number: '4663'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1298
+    kind: issue
+    number: '1298'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1873
+    kind: issue
+    number: '1873'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/2112
+    kind: issue
+    number: '2112'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/3701
+    kind: pr
+    number: '3701'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1345
+    kind: issue
+    number: '1345'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/1668
+    kind: issue
+    number: '1668'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/2323
+    kind: issue
+    number: '2323'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/397
+    kind: issue
+    number: '397'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12779
+    kind: pr
+    number: '12779'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/commit/72d4f30f0af92333e15b6fe70fda4307bf920ff4
+    kind: commit
+    number: 72d4f30f0af92333e15b6fe70fda4307bf920ff4
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/7875
+    kind: issue
+    number: '7875'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/7923
+    kind: issue
+    number: '7923'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/870
+    kind: pr
+    number: '870'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/13571
+    kind: pr
+    number: '13571'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12761
+    kind: pr
+    number: '12761'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1752
+    kind: pr
+    number: '1752'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/572
+    kind: pr
+    number: '572'
+    role: expanded
+  confidence: high
+  timeline:
+  - date: '2018-07-25'
+    kind: issue
+    native_id: '234'
+    title: support for ForwardRef (forward references)
+  - date: '2018-08-22'
+    kind: issue
+    native_id: '248'
+    title: support for postponed annotations
+  - date: '2018-08-28'
+    kind: issue
+    native_id: '251'
+    title: Recursive model RuntimeError
+  - date: '2018-12-29'
+    kind: pr
+    native_id: '348'
+    title: support postponed annotations and ForwardRef in python 3.7
+  - date: '2019-01-11'
+    kind: commit
+    native_id: 25b5d980306685957e3905a4f93c87cd8a3527b8
+    title: null
+  - date: '2019-04-23'
+    kind: issue
+    native_id: '486'
+    title: Documentation for "Postponed Annotations" is slightly confusing
+  - date: '2020-04-17'
+    kind: pr
+    native_id: '1402'
+    title: Bump python-dotenv from 0.12.0 to 0.13.0
+  - date: '2021-04-15'
+    kind: issue
+    native_id: '2678'
+    title: PEP 563, PEP 649 and pydantic
+  - date: '2021-05-07'
+    kind: issue
+    native_id: '2760'
+    title: NamedTuple doesn't resolve postponed annotations
+  - date: '2021-05-08'
+    kind: pr
+    native_id: '2761'
+    title: Resolve postponed NamedTuple annotations (#2760)
+  - date: '2021-10-02'
+    kind: issue
+    native_id: '3282'
+    title: '`Field` metadata from `Annotated` is lost after a call to `update_forward_refs`'
+  - date: '2023-10-19'
+    kind: issue
+    native_id: '7873'
+    title: future annotations with Python 3.8 cause TypeError
+  - date: '2023-11-22'
+    kind: pr
+    native_id: '8209'
+    title: Add eval_type_backport to handle union operator and builtin generic subscripting
+      in older Pythons
+  - date: '2024-01-02'
+    kind: issue
+    native_id: '8475'
+    title: Import issue with auto schema creation with dataclass
+  - date: '2024-02-24'
+    kind: issue
+    native_id: '8883'
+    title: Postponed evaluation of annotation failure
+  - date: '2024-10-10'
+    kind: issue
+    native_id: '10591'
+    title: '[Docs] Page on postponed annotations is confusing (example doesn''t actually
+      contain postponed annotations?)'
+  - date: '2024-11-18'
+    kind: issue
+    native_id: '10877'
+    title: PEP 695 types with reference to `Enum` inside annotation breaks `pydantic_core`
+  - date: '2026-06-03'
+    kind: pr
+    native_id: '13262'
+    title: Bump pnpm/action-setup from 5.0.0 to 6.0.8
+  score: 2
+  notes: correct answer with working links
+- id: G08
+  question: Зачем в pydantic отдельный StrictBool — чем обычный bool не устроил?
+  expected_summary: bool в Python является подклассом int, из-за чего lax-валидация
+    пропускала числа там, где ожидался флаг; StrictBool отделил настоящие boolean
+    от числовых (#579).
+  answer: '### 1. Original Problem
+
+
+    В pydantic обычное поле `bool` принимает практически любое значение из-за логики
+    Python: `bool({"moo": 1}) == True`. Пользователь, получающий данные из внешнего
+    источника (например, JSON для API), не может быть уверен, что в поле действительно
+    пришёл булев тип — значение молча коэрцируется. Автор предложил либо ужесточить
+    дефолтный валидатор, либо добавить отдельный «строгий» тип.
+
+
+    Источник: [issue #579](https://github.com/pydantic/pydantic/issues/579) (cazgp,
+    2019-06-05).
+
+
+    Параллельно в [issue #578](https://github.com/pydantic/pydantic/issues/578) samuelcolvin
+    зафиксировал позицию команды: pydantic — это **parsing library**, а не validation
+    library, и менять дефолтное поведение `bool`/`int` не планируется.
+
+
+    ### 2. Alternatives Considered
+
+
+    - **Сделать `bool_validator` строгим по умолчанию** — предложено в [PR #617](https://github.com/pydantic/pydantic/pull/617)
+    (dmontagu, 2019-06-23). dmontagu допускал `True/False/0/1` и YAML-строки (`''t''/''T''/''f''/''F''`,
+    JSON-варианты и их `bytes`). Для обратной совместимости предлагал оставить `RelaxedBool`.
+
+    - **Добавить отдельный `StrictBool`** — выбрано, см. ниже.
+
+    - **Глобальный strict-mode для всей модели** — обсуждался в [issue #1098](https://github.com/pydantic/pydantic/issues/1098)
+    (maxrothman, 2019-12-15) и позднее в [issue #4664](https://github.com/pydantic/pydantic/issues/4664)
+    для v2 (samuelcolvin, 2022-10-27) с идеей `model_strict()` / `model_lax()`.
+
+    - **Generic StrictType-фабрика** для создания `StrictInt`, `StrictFloat` и т.д.
+    — [issue #780](https://github.com/pydantic/pydantic/issues/780) (haizaar, 2019-08-26).
+
+
+    ### 3. Arguments For/Against
+
+
+    - cazgp (автор запроса, [#579](https://github.com/pydantic/pydantic/issues/579)):
+    «`a` should be a bool and only a bool. If a user provides any other value to the
+    endpoint (using fastapi), the database throws because it''s the wrong type… I
+    cannot think of a single type that can be passed to `bool(X)` that won''t return
+    a boolean… This makes the validator completely useless.»
+
+    - samuelcolvin ([#578](https://github.com/pydantic/pydantic/issues/578)): «Pydantic
+    is no a validation library, it''s a parsing library. It makes no guarantee whatsoever
+    about checking the form of data you give to it; instead it makes a guarantee about
+    the form of data you get out of it.» — поэтому ломать дефолтное поведение `bool`
+    не планируется, но добавить opt-in строгий тип — нормальный компромисс.
+
+    - dmontagu ([PR #617](https://github.com/pydantic/pydantic/pull/617)): «This would
+    be a breaking change for a very common type (if modifying `bool_validator` anyway),
+    so I wouldn''t necessarily expect it to be merged prior to a 1.0 release» — аргумент
+    против изменения дефолта.
+
+    - samuelcolvin ([#4664](https://github.com/pydantic/pydantic/issues/4664)): «pydantic-core
+    can switch from strict to lax mode at validation time… I very much doubt that
+    will be possible in pydantic - many of the schemas will need to be different for
+    strict and lax mode» — объяснение, почему глобальный strict-mode сложен.
+
+    - Passer-Keenan ([#8863](https://github.com/pydantic/pydantic/issues/8863), 2024-02-21):
+    «`"NO"` — string… validation passed… I would''ve expected this to fail… `StrictBool`
+    does act as expected» — подтверждение, что `StrictBool` действительно нужен, но
+    также критика того, что `bool` слишком либерален к строкам.
+
+    - spookylukey ([#2329](https://github.com/pydantic/pydantic/issues/2329)): «if
+    you are trying to tighten validation by going from `int` to `StrictInt` etc, these
+    types fail as drop in replacements» — `StrictBool(False)` не проходил `isinstance(...,
+    bool)`, что требовало отдельной починки (см. [PR #3885](https://github.com/pydantic/pydantic/pull/3885)).
+
+
+    ### 4. Decision
+
+
+    Выбран компромисс: **pydantic остаётся parsing-библиотекой с мягкой коэрцией по
+    умолчанию**, но добавляется opt-in тип `StrictBool` (а позже — `StrictInt`, `StrictFloat`,
+    `StrictBytes`, `StrictStr`). Решение отражено в позиции samuelcolvin в [#578](https://github.com/pydantic/pydantic/issues/578)
+    и реализовано через новый тип, а не через ломание дефолтного `bool_validator`.
+    PR #617, который пытался ужесточить сам `bool_validator`, не был смержен.
+
+
+    ### 5. Implementation
+
+
+    - [commit eb1e640](https://github.com/pydantic/pydantic/commit/eb1e640525a29f6e4358c767cf3c9232d6801b12)
+    (cazgp, 2019-06-06) — добавлен `StrictBool` в `pydantic/types.py`, документация
+    и тесты обновлены. Описание коммита: «StrictBool only allows booleans to be parsed.
+    Any other value, no matter its truthiness, is rejected.»
+
+    - [PR #580](https://github.com/pydantic/pydantic/pull/580) — PR cazgp, оформивший
+    то же изменение: «Add a StrictBool type which only permits booleans to be parsed.»
+
+    - [PR #873](https://github.com/pydantic/pydantic/pull/873) (dmontagu, 2019-10-07)
+    — `StrictBool` помещён в `if not TYPE_CHECKING:`, чтобы mypy видел его как `bool`.
+    Закрыл [#690](https://github.com/pydantic/pydantic/issues/690) про default-значения.
+
+    - [PR #3885](https://github.com/pydantic/pydantic/pull/3885) (spookylukey, 2022-03-07)
+    — `StrictBool.__new__` стал безусловно делегировать в `bool.__new__`, чтобы `isinstance(StrictBool(False),
+    bool) is True`. Для v1.
+
+
+    ### 6. Current State
+
+
+    - `StrictBool` существует и в v1, и в v2 как часть набора `Strict*` типов.
+
+    - В v2 добавлен глобальный strict-mode ([issue #4664](https://github.com/pydantic/pydantic/issues/4664)
+    → blog post «Pydantic V2: Strict mode»), но общая коэрция по умолчанию сохранена
+    — `StrictBool` остаётся opt-in.
+
+    - Часть жалоб остаётся: [#8863](https://github.com/pydantic/pydantic/issues/8863)
+    показывает, что обычный `bool` всё ещё принимает «NO» как True в v2.5.3; [#8175](https://github.com/pydantic/pydantic/issues/8175)
+    и [#7294](https://github.com/pydantic/pydantic/issues/7294) отмечают отдельный
+    баг сериализации bool как int в `model_dump_json`. Это не отменяет `StrictBool`,
+    но показывает, что базовое поведение `bool` намеренно либеральное.
+
+
+    ### 7. Confidence & Gaps
+
+
+    **Confidence: high.** Цепочка «проблема → позиция pydantic как parsing-библиотеки
+    → компромисс через opt-in тип → реализация StrictBool» хорошо подтверждена issue
+    #578, #579, PR #580, commit eb1e640.
+
+
+    **Gaps:**
+
+    - Нет прямого комментария samuelcolvin с явным «выбираем StrictBool вместо ужесточения
+    `bool_validator`» — решение реконструировано по комбинации [#578](https://github.com/pydantic/pydantic/issues/578)
+    и тому факту, что был смержен PR #580, а не PR #617.
+
+    - Не показаны дальнейшие PR на StrictInt/StrictFloat/StrictStr — известно только
+    из [#780](https://github.com/pydantic/pydantic/issues/780) и [#2329](https://github.com/pydantic/pydantic/issues/2329),
+    что они в итоге появились; конкретные PR-ы в выдаче отсутствуют.'
+  sources:
+  - url: https://github.com/pydantic/pydantic/issues/579
+    kind: issue
+    number: '579'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/690
+    kind: issue
+    number: '690'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/617
+    kind: pr
+    number: '617'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/3747
+    kind: issue
+    number: '3747'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/578
+    kind: issue
+    number: '578'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/4664
+    kind: issue
+    number: '4664'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/2329
+    kind: issue
+    number: '2329'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/8863
+    kind: issue
+    number: '8863'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/10852
+    kind: issue
+    number: '10852'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/7294
+    kind: issue
+    number: '7294'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/780
+    kind: issue
+    number: '780'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/pull/580
+    kind: pr
+    number: '580'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/10000
+    kind: issue
+    number: '10000'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/1723
+    kind: issue
+    number: '1723'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/3885
+    kind: pr
+    number: '3885'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/1098
+    kind: issue
+    number: '1098'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/commit/eb1e640525a29f6e4358c767cf3c9232d6801b12
+    kind: commit
+    number: eb1e640525a29f6e4358c767cf3c9232d6801b12
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/873
+    kind: pr
+    number: '873'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/8175
+    kind: issue
+    number: '8175'
+    role: cited
+  - url: https://github.com/pydantic/pydantic/issues/4556
+    kind: issue
+    number: '4556'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/commit/23970fe1f4e6f4bcb95788ac38ad53e770c5c555
+    kind: commit
+    number: 23970fe1f4e6f4bcb95788ac38ad53e770c5c555
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/5318
+    kind: issue
+    number: '5318'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/issues/5377
+    kind: issue
+    number: '5377'
+    role: retrieved
+  - url: https://github.com/pydantic/pydantic/pull/856
+    kind: pr
+    number: '856'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/5177
+    kind: pr
+    number: '5177'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/693
+    kind: issue
+    number: '693'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/360
+    kind: issue
+    number: '360'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2855
+    kind: pr
+    number: '2855'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/284
+    kind: issue
+    number: '284'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/576
+    kind: issue
+    number: '576'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/3884
+    kind: issue
+    number: '3884'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/865
+    kind: issue
+    number: '865'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12469
+    kind: pr
+    number: '12469'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/7716
+    kind: pr
+    number: '7716'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/13105
+    kind: pr
+    number: '13105'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4516
+    kind: pr
+    number: '4516'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/2473
+    kind: issue
+    number: '2473'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12765
+    kind: pr
+    number: '12765'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4753
+    kind: pr
+    number: '4753'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/4669
+    kind: issue
+    number: '4669'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/4713
+    kind: pr
+    number: '4713'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/1591
+    kind: pr
+    number: '1591'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/6830
+    kind: issue
+    number: '6830'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/719
+    kind: pr
+    number: '719'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/797
+    kind: issue
+    number: '797'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/commit/72edca75328e61406756d553a23ca6d7c8a9067e
+    kind: commit
+    number: 72edca75328e61406756d553a23ca6d7c8a9067e
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/8080
+    kind: pr
+    number: '8080'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/8190
+    kind: pr
+    number: '8190'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/2224
+    kind: pr
+    number: '2224'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/416
+    kind: issue
+    number: '416'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/12761
+    kind: pr
+    number: '12761'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/13144
+    kind: pr
+    number: '13144'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/52
+    kind: pr
+    number: '52'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/10024
+    kind: pr
+    number: '10024'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/pull/13571
+    kind: pr
+    number: '13571'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/347
+    kind: issue
+    number: '347'
+    role: expanded
+  - url: https://github.com/pydantic/pydantic/issues/2025
+    kind: issue
+    number: '2025'
+    role: expanded
+  confidence: high
+  timeline:
+  - date: '2019-06-05'
+    kind: issue
+    native_id: '579'
+    title: StrictBool
+  - date: '2019-06-05'
+    kind: issue
+    native_id: '578'
+    title: Clarify the purpose of pydantic e.g. not strict validation
+  - date: '2019-06-05'
+    kind: pr
+    native_id: '580'
+    title: StrictBool
+  - date: '2019-06-06'
+    kind: commit
+    native_id: eb1e640525a29f6e4358c767cf3c9232d6801b12
+    title: null
+  - date: '2019-06-23'
+    kind: pr
+    native_id: '617'
+    title: Make bool_validator strict
+  - date: '2019-07-25'
+    kind: issue
+    native_id: '690'
+    title: How to provide default value to StrictBool?
+  - date: '2019-08-26'
+    kind: issue
+    native_id: '780'
+    title: Generic method to create Strict<type> fields
+  - date: '2019-10-07'
+    kind: pr
+    native_id: '873'
+    title: Make strictbool typecheck as bool
+  - date: '2019-12-15'
+    kind: issue
+    native_id: '1098'
+    title: Strict configuration
+  - date: '2020-07-14'
+    kind: issue
+    native_id: '1723'
+    title: No way to have a proper Union[int, bool]
+  - date: '2021-02-08'
+    kind: issue
+    native_id: '2329'
+    title: StrictBool, StrictStr etc types are not drop in replacements for normal
+      types
+  - date: '2022-01-28'
+    kind: issue
+    native_id: '3747'
+    title: pydantic unable to identify wrong value type when int is passed instead
+      of str for as an attribute's value
+  - date: '2022-03-07'
+    kind: pr
+    native_id: '3885'
+    title: Fix StrictBool etc. constructors should return base types
+  - date: '2022-10-27'
+    kind: issue
+    native_id: '4664'
+    title: 'V2: Strict mode for types defined in python'
+  - date: '2023-08-30'
+    kind: issue
+    native_id: '7294'
+    title: '`model_dump` should serialise bools as bools for json'
+  - date: '2023-11-20'
+    kind: issue
+    native_id: '8175'
+    title: '`JsonValue` union validation chooses wrong member type'
+  - date: '2024-02-21'
+    kind: issue
+    native_id: '8863'
+    title: Validation fails with certain strings in place for a bool
+  - date: '2024-07-30'
+    kind: issue
+    native_id: '10000'
+    title: When using pydantic mypy plugin, mypy 1.11.0 uses wrong return type for
+      pydantic.v1.BaseModel.construct()
+  - date: '2024-11-15'
+    kind: issue
+    native_id: '10852'
+    title: Support for custom Pydantic classes to use with to_strict_json_schema
+  score: 2
+  notes: correct answer with working links
