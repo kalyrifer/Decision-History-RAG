@@ -24,7 +24,8 @@ def main() -> int:
     results: list[tuple[str, bool, str, bool]] = []  # (name, ok, detail, required)
 
     results.append(
-        ("GitHub токен задан", bool(GITHUB_TOKEN), "впиши GITHUB_TOKEN в .env", True)
+        ("GitHub токен задан", bool(GITHUB_TOKEN),
+         "нужен только для повторной загрузки данных (ingest); для ответов не требуется", False)
     )
     if GITHUB_TOKEN:
         try:
@@ -33,9 +34,9 @@ def main() -> int:
                 headers={"Authorization": f"Bearer {GITHUB_TOKEN}"},
                 timeout=15,
             )
-            remaining = r.json()["resources"]["core"]["remaining"]
+            remaining = r.json().get("resources", {}).get("core", {}).get("remaining", "?")
             results.append(
-                ("GitHub API", r.status_code == 200, f"status={r.status_code}, осталось запросов: {remaining}", True)
+                ("GitHub API", r.status_code == 200, f"status={r.status_code}, осталось запросов: {remaining}", False)
             )
         except Exception as e:
             results.append(("GitHub API", False, str(e), True))

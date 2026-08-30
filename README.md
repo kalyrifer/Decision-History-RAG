@@ -4,50 +4,174 @@ RAG-система, восстанавливающая цепочку приня
 GitHub-репозитория (issue → альтернативы → аргументы → решение → PR/commit)
 по вопросу вида «Почему выбрали X?».
 
-Целевой репозиторий: pydantic/pydantic. Стек и план: см. PLAN.md.
+Целевой репозиторий: `pydantic/pydantic` (данные уже загружены в БД).
+Подробный план и стек — в [PLAN.md](PLAN.md).
 
-## Прогресс
+---
 
-- Фаза 1 (ингест): 5715 issues + 5494 PR + 5692 коммита + 39960 комментариев; 100% покрытие деталями.
-- Фаза 2 (граф): 55278 связей (closes/references/pr_commit/parent) + 27055 файлов.
-- Фаза 3 (эмбеддинги): 74080 чанков, bge-small-en-v1.5 на CPU, полный прогон за 45.3 мин (~11 чанков/с), HNSW + GIN построены.
-- Фаза 4 (поиск): hybrid RRF + query rewrite через OpenRouter :free + graph expansion.
-  Golden set: recall@10 = 7/8 (88%), граф вытягивает скрытые якоря в 3 вопросах из 8,
-  среднее время поиска 0.68с. Кэш переводов: data/rewrite_cache.json.
-- Фаза 6 (оценка + итерация): golden set G01–G08 (8 вопросов, 11 якорей).
+## Возможности
 
-  ### Retrieval-метрики
+- **Поиск по истории репозитория** — гибридный: pgvector (dense) + PostgreSQL FTS,
+  слияние Reciprocal Rank Fusion, расширение по графу связей (issue↔PR↔commit↔comments).
+- **Синтез ответа LLM** — OpenRouter :free модели восстанавливают цепочку решения:
+  исходная проблема → альтернативы → аргументы → решение → имплементация → текущее состояние,
+  с рабочими ссылками на GitHub и мини-timeline.
+- **Web-интерфейс (Streamlit)** — задаёшь вопрос, получаешь ответ, источники и timeline.
+- **Оценка (eval)** — golden set из 8 вопросов, метрики retrieval (recall@10, MRR)
+  и ответов (рубрика 0–2).
+- **Полностью бесплатно и локально**: без GPU, без платных API (кроме бесплатных
+  моделей OpenRouter :free), всё в Docker Postgres.
 
-  | Конфигурация | recall@10 fusion | recall@10 evidence | MRR | Вопросов с якорем |
-  |---|---|---|---|---|
-  | **hybrid (baseline)** | 73% (8/11) | 100% (11/11) | 0.791 | 7/8 |
-  | **dense-only** | 91% (10/11) | 100% (11/11) | 0.891 | 8/8 |
-  | **FTS-only** | 45% (5/11) | 55% (6/11) | 0.455 | 5/8 |
-  | **hybrid w_fts=0.1 (исправлено)** | **91% (10/11)** | **100% (11/11)** | **0.891** | **8/8** |
+---
 
-  Правка: понижен вес FTS-канала в RRF (FTS_WEIGHT=0.1, config.py) — FTS на этом корпусе
-  шумит и топит релевантные якоря. Результат: recall@10 fusion вырос с 73% до 91%.
+## Требования
 
-  ### Ответ-метрики (рубрика 0–2, средний балл)
+- Windows 11 + PowerShell (проект делался под это)
+- Docker Desktop (Postgres + pgvector)
+- Python 3.11+ (venv в корне проекта)
+- Интернет: для скачивания эмбеддинг-модели и вызовов OpenRouter :free
 
-  | Модель | Средний балл | Распределение | 2 балла |
-  |---|---|---|---|
-  | minimax/m3 (OpenRouter :free) | **2.00/2** | 0:0, 1:0, **2:8** | 8/8 (100%) |
+---
 
-  Все 8 ответов корректны, содержат рабочие ссылки на issue/PR/commit, цепочка «проблема
-  → альтернативы → аргументы → решение → имплементация → текущее состояние» восстановлена.
-  Главный класс ошибок: FTS-шум в hybrid fusion (исправлен).
-- Фаза 7 (расширения): Streamlit UI — `streamlit run ui/app.py` (окно вопроса, таблица
-  найденных сущностей, ответ LLM, источники, timeline, кликабельные ссылки).
-  Реранкер bge-reranker-base: абляция (`eval/rerank_ablation.py`) показала ДЕГРАДАЦИЮ
-  (recall@10 94%→50%, MRR 0.891→0.539, 48.9с/вопрос) — по правилу плана НЕ включён.
+## Быстрый старт (за 5 минут)
 
-## Быстрый старт
+### 1. Установка
 
 ```powershell
+# клонируй/открой проект, затем:
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
-copy .env.example .env   # затем вписать GITHUB_TOKEN и GEMINI_API_KEY
-docker compose up -d
-python scripts\check_env.py
+copy .env.example .env
 ```
+
+### 2. Подними Postgres
+
+```powershell
+docker compose up -d
+# дождись health: docker ps
+```
+
+### 3. Настрой ключи в .env
+
+Открой `.env` и впиши **минимум**: `OPENROUTER_API_KEY` (для ответов LLM).
+`GITHUB_TOKEN` нужен только если захочешь перезагрузить данные из GitHub (см. ниже).
+
+### 4. Проверь окружение
+
+```powershell
+.venv\Scripts\python scripts\check_env.py
+```
+
+Должно быть `PASS` для OpenRouter API и Postgres + pgvector. (GitHub токен и Gemini
+можно игнорировать — они не нужны для использования готовых данных.)
+
+### 5. Запусти интерфейс
+
+```powershell
+.venv\Scripts\python -m streamlit run ui\app.py
+```
+
+Открой в браузере `http://localhost:8501`. Задай вопрос, например:
+- «Почему ядро pydantic переписали с Cython на Rust?»
+- «Почему pydantic ввел StrictBool?»
+- «Зачем появились discriminated unions?»
+
+---
+
+## Использование из командной строки
+
+Вся логика доступна и без UI:
+
+```powershell
+# Поиск (без LLM): таблица найденных сущностей + ссылки
+.venv\Scripts\python cli.py search "почему появился StrictBool"
+
+# Полный ответ с LLM (нарратив + источники + timeline)
+.venv\Scripts\python cli.py ask "почему появился StrictBool"
+
+# Только поиск, без расширения графом
+.venv\Scripts\python cli.py search "почему X" --no-expand
+
+# Ответ в JSON (для своих скриптов/интеграций)
+.venv\Scripts\python cli.py ask "почему X" --json
+```
+
+---
+
+## Структура репозитория
+
+```
+├─ cli.py                # команды: search / ask / status / ingest-* / normalize / chunks / embed
+├─ config.py             # чтение .env, константы (FTS_WEIGHT, RERANK_MODEL и др.)
+├─ docker-compose.yml    # postgres + pgvector
+├─ .env.example          # шаблон ключей (копируй в .env)
+├─ ingest/               # загрузка git + GitHub API → data/raw/*.jsonl
+├─ normalize/            # сырые данные → entities/relations/files в Postgres
+├─ represent/            # сущности → текстовые чанки + эмбеддинги (pgvector)
+├─ retrieve/             # поиск: hybrid RRF, graph expansion, query rewrite, rerank (опц.)
+├─ synthesize/           # LLM: провайдер с ротацией моделей, промпт, сборка ответа
+├─ eval/                 # golden_set.yaml, run_eval.py, rerank_ablation.py
+├─ ui/                   # Streamlit интерфейс (app.py)
+├─ scripts/              # проверки окружения и фаз, вспомогательные скрипты
+└─ data/                 # сырые JSONL + bare git-клон (в .gitignore)
+```
+
+---
+
+## Оценка (eval) — как проверить качество
+
+```powershell
+# retrieval-метрики: recall@10 (fusion/evidence), MRR; абляции режимов
+.venv\Scripts\python eval\run_eval.py retrieval
+.venv\Scripts\python eval\run_eval.py retrieval --mode dense
+.venv\Scripts\python eval\run_eval.py retrieval --mode fts
+.venv\Scripts\python eval\run_eval.py retrieval --no-expand
+
+# сгенерировать ответы LLM по golden set -> eval/answers.yaml (заполни score 0/1/2 вручную)
+.venv\Scripts\python eval\run_eval.py answers
+# свести таблицу ответов
+.venv\Scripts\python eval\run_eval.py score
+```
+
+Текущие результаты (после правки `FTS_WEIGHT=0.1`):
+- recall@10 fusion = 91% (10/11 якорей), MRR = 0.891
+- Ответы LLM: 8/8 по 2 балла из 2
+
+---
+
+## Как перезагрузить данные из GitHub (необязательно)
+
+Если данные в БД уже есть — **ничего делать не нужно**. Перезагрузка нужна только
+если хочешь сменить репозиторий или подтянуть свежие issue/PR:
+
+```powershell
+# 1. GITHUB_TOKEN в .env (read-only)
+# 2. Останови пересборку в правильном порядке (если менял TARGET_REPO в config.py — очисти БД):
+docker exec -it decision-rag-db psql -U rag -d decision_rag -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+
+# 3. Загрузка (докачиваемая, продолжается с чекпоинтов)
+.venv\Scripts\python cli.py ingest-git
+.venv\Scripts\python cli.py ingest-inventory
+.venv\Scripts\python cli.py ingest-details        # --max-batches N для батчами
+
+# 4. Нормализация + граф
+.venv\Scripts\python cli.py normalize
+
+# 5. Чанки + эмбеддинги (долго: десятки минут на CPU)
+.venv\Scripts\python cli.py chunks
+.venv\Scripts\python cli.py embed
+
+# 6. Проверка целостности
+.venv\Scripts\python scripts\verify_all.py
+```
+
+---
+
+## Известные замечания
+
+- **Реранкер (bge-reranker-base) НЕ включён** — абляция показала деградацию
+  (recall@10 94%→50%), см. `eval/rerank_ablation.py` и PLAN.md (Фаза 7).
+- **GitHub токен** нужен только для ингеста; для ответов на готовых данных — нет.
+- **Gemini API** не работает из РФ (region-block) — в стеке используется OpenRouter.
+- Эмбеддинги: `BAAI/bge-small-en-v1.5` (384 dim), CPU. Реранкер-модель (~1.1 ГБ)
+  скачивается в кэш HuggingFace автоматически при первом использовании.
