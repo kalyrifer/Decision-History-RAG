@@ -79,6 +79,47 @@ def cmd_embed(_args) -> None:
     embed.main()
 
 
+def cmd_search(args) -> None:
+    from retrieve import pipeline
+
+    res = pipeline.search(args.query, no_expand=args.no_expand)
+    if args.json:
+        print(json.dumps(res, ensure_ascii=False, indent=1, default=str))
+    else:
+        pipeline.print_table(res)
+
+
+def cmd_ask(args) -> None:
+    from retrieve import pipeline as search_pipeline
+    from synthesize import answer as synth_answer
+
+    res = search_pipeline.search(args.query, no_expand=args.no_expand)
+    if args.search_only:
+        search_pipeline.print_table(res)
+        return
+
+    result = synth_answer.answer(res, args.query, verbose=args.verbose)
+    print(f"\n{'='*80}")
+    print(f"Вопрос: {result['question']}")
+    print(f"{'='*80}\n")
+    print(result["answer"])
+    print(f"\n{'='*80}")
+    print(f"Уверенность: {result['confidence']}")
+    print(f"Источники ({len(result['sources'])}):")
+    for s in result["sources"]:
+        tag = f" [{s['role']}]" if s.get("role") else ""
+        print(f"  {s['url']}{tag}")
+    if result["timeline"]:
+        print(f"\nTimeline ({len(result['timeline'])} событий):")
+        for t in result["timeline"][:20]:
+            print(f"  {t['date']}  {t['kind']:<7} {t['native_id']:<10} {(t['title'] or '')[:60]}")
+    stats = result["llm_stats"]
+    print(f"\nLLM: {stats['total_tokens']} токенов, ${stats['total_cost_usd']:.4f}")
+    if args.json:
+        print("\n--- JSON ---")
+        print(json.dumps(result, ensure_ascii=False, indent=1, default=str))
+
+
 def cmd_normalize(_args) -> None:
     from normalize import extract_relations, parse_raw
 
@@ -97,6 +138,19 @@ def main() -> None:
     sub.add_parser("normalize", help="сырые данные -> entities/relations/files").set_defaults(func=cmd_normalize)
     sub.add_parser("chunks", help="сущности -> чанки текста").set_defaults(func=cmd_chunks)
     sub.add_parser("embed", help="эмбеддинги чанков + индексы").set_defaults(func=cmd_embed)
+    p_s = sub.add_parser("search", help="поиск по истории репозитория")
+    p_s.add_argument("query")
+    p_s.add_argument("--no-expand", action="store_true", dest="no_expand")
+    p_s.add_argument("--json", action="store_true")
+    p_s.set_defaults(func=cmd_search)
+    p_ask = sub.add_parser("ask", help="вопрос → нарратив решения с цитатами")
+    p_ask.add_argument("query")
+    p_ask.add_argument("--no-expand", action="store_true", dest="no_expand")
+    p_ask.add_argument("--search-only", action="store_true", dest="search_only",
+                       help="только поиск, без LLM")
+    p_ask.add_argument("--json", action="store_true")
+    p_ask.add_argument("--verbose", action="store_true")
+    p_ask.set_defaults(func=cmd_ask)
     sub.add_parser("status", help="прогресс ингеста").set_defaults(func=cmd_status)
     args = ap.parse_args()
     args.func(args)
