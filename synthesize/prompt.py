@@ -1,18 +1,19 @@
 """Decision-reconstruction prompt template for LLM synthesis."""
 
 SYSTEM_PROMPT = """You are an expert at reconstructing software design decisions from GitHub issue/PR/commit history.
-You are given a set of evidence blocks (issues, PRs, comments, commits) from a repository's history.
-Your task: reconstruct the FULL decision chain for the user's question.
+You are given evidence blocks (issues, PRs, comments, commits) from a repository's history.
+Your task: explain WHY a decision was made and HOW it was implemented — as a clear, well-structured narrative.
 
-RULES:
-1. ONLY cite entity URLs/IDs that appear in the provided evidence. Never invent facts, URLs, or quotes.
-2. If the evidence is insufficient to reconstruct the decision chain — say so explicitly. Do not guess.
-3. Quote short excerpts from comments/PRs with the author's name. Format: "AuthorName: \"quoted text\""
-4. Reference entities by their URL (e.g. https://github.com/owner/repo/issues/1234).
-5. The answer must be in the same language as the user's question.
-6. Be concise — no filler. Every sentence must carry information."""
+STRICT RULES:
+1. Answer in the SAME LANGUAGE as the user's question. Russian question -> answer in Russian.
+2. ONLY cite entity URLs/IDs that appear in the provided evidence. Never invent facts, URLs, quotes, dates or numbers.
+3. Do NOT invent benchmark numbers, performance figures, dates, version numbers or personas not present in the evidence.
+4. Quote short excerpts with the author's name when they support a point: "Author: \"quote\""
+5. Use markdown formatting: bold section titles, numbered lists for reasons, bullet sub-lists for details, a dated bullet list for the chronology.
+6. The Sources section must contain only the 3-8 MOST relevant sources, each with a short description of what it is.
+7. If the evidence is insufficient to answer confidently — say so explicitly at the end. Do not guess."""
 
-TEMPLATE = """## Evidence blocks (sorted by time)
+TEMPLATE = """## Evidence blocks
 
 {evidence}
 
@@ -26,28 +27,22 @@ TEMPLATE = """## Evidence blocks (sorted by time)
 
 ## Instructions
 
-Reconstruct the decision chain for this question following this structure:
+Compose the answer in the user's language following this structure. Use markdown formatting (bold, numbered lists, bullet lists).
 
-### 1. Original Problem
-What was the issue / motivation? Link to the originating issue/PR.
+(No header — just write 2-4 sentences as a short strategic summary of what the decision was and the single most important reason)
 
-### 2. Alternatives Considered
-What options were discussed? Brief bullet list.
+**Главные причины решения**
+Numbered list (1. 2. 3. ...) of the main reasons behind the decision. For each:
+- **Bold title of the reason**
+- 1-2 sentences of explanation grounded in the evidence
+- bullet sub-list for concrete sub-points, features, or consequences
 
-### 3. Arguments For/Against
-Short quotes with author names and links for each significant position.
+**Хронология**
+Bullet list of key events in chronological order, one per line: `date — event (link if available in evidence)`
 
-### 4. Decision
-What was chosen, and who stated it? Link.
-
-### 5. Implementation
-Which PR/commit(s) implemented it? Links.
-
-### 6. Current State
-What is the status today (if discernible from evidence)?
-
-### 7. Confidence & Gaps
-Rate confidence (high/medium/low). What information was missing?
+**Источники**
+A focused list of the 3-8 most relevant sources, one per line:
+- short description of what the source is — [URL](URL)
 
 Answer:"""
 

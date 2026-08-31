@@ -166,21 +166,27 @@ def answer(search_result: dict, question: str, verbose: bool = False) -> dict:
 
     sources = []
     seen_src = set()
+    cited_only = set()
     for r in rows:
         eid = r["entity_id"]
         ent = entities.get(eid, {})
         url = ent.get("url", "")
         num = ent.get("native_id", "")
-        if url and url not in seen_src:
-            role = ""
-            if isinstance(num, str) and num.isdigit() and int(num) in cited_ids:
-                role = "cited"
-            elif r.get("hop", 0) == 0:
-                role = "retrieved"
-            else:
-                role = "expanded"
-            sources.append({"url": url, "kind": ent.get("kind"), "number": num, "role": role})
-            seen_src.add(url)
+        if not url or url in seen_src:
+            continue
+        role = ""
+        if isinstance(num, str) and num.isdigit() and int(num) in cited_ids:
+            role = "cited"
+            cited_only.add(url)
+        elif r.get("hop", 0) == 0:
+            role = "retrieved"
+        else:
+            continue  # skip expanded unless cited
+        sources.append({"url": url, "kind": ent.get("kind"), "number": num, "role": role})
+        seen_src.add(url)
+    # sort: cited first, then retrieved; cap at 15
+    sources.sort(key=lambda s: (0 if s["role"] == "cited" else 1, s.get("number", "")))
+    sources = sources[:15]
 
     timeline = []
     for b in evidence_blocks:
