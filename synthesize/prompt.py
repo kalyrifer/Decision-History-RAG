@@ -27,8 +27,13 @@ TEMPLATE = """## Evidence blocks
 
 ## Instructions
 
-Compose the answer in the user's language. Derive the section structure from the QUESTION itself — do not use a fixed template.
-The sections should be what makes sense for the specific question asked.
+Compose the answer in the user's language. The question below may contain SEVERAL aspects — you MUST address each one explicitly in its own section.
+
+Detected aspects of the question:
+{aspects}
+
+Derive the section structure from the question itself — do not use a fixed template.
+Make sure every detected aspect above is covered by at least one section.
 
 For example:
 - If the question is about WHY a decision was made: include a strategic summary, main reasons, chronology, and sources.
@@ -42,12 +47,28 @@ Always include a **Хронология** (Chronology) section with dated events
 
 Answer:"""
 
+_ASPECT_LABELS = {
+    "why": "WHY — причины/мотивация решения",
+    "structure": "STRUCTURE — структура репозитория, пакеты, каталоги, переносы",
+    "what_changed": "WHAT CHANGED — что изменилось (различия, новые/удалённые API)",
+    "timeline": "TIMELINE — хронология событий",
+}
+
+
+def _aspects_text(focus: dict) -> str:
+    aspects = focus.get("aspects") or [focus.get("primary", "why")]
+    lines = []
+    for a in aspects:
+        lines.append(f"- {_ASPECT_LABELS.get(a, a)}")
+    return "\n".join(lines)
+
 
 def build_prompt(evidence_blocks: list[dict], question: str, focus: str | None = None) -> str:
     from .focus import focus_of
 
+    foc = focus_of(question)
     if focus is None:
-        focus = focus_of(question)["primary"]
+        focus = foc["primary"]
     lines = []
     for b in evidence_blocks:
         kind = b.get("kind", "?").upper()
@@ -67,4 +88,5 @@ def build_prompt(evidence_blocks: list[dict], question: str, focus: str | None =
             f"---"
         )
     evidence = "\n\n".join(lines)
-    return TEMPLATE.format(evidence=evidence, question=question)
+    aspects = _aspects_text(foc)
+    return TEMPLATE.format(evidence=evidence, question=question, aspects=aspects)

@@ -35,3 +35,6 @@ RERANK_DEVICE = "cpu"  # "cuda" при наличии GPU-версии torch
 RERANK_FILTER_ENABLED = False
 RERANK_KEEP_FRAC = 0.6   # доля кандидатов, остающаяся после фильтра
 RERANK_MIN_KEEP = 5      # минимум выживших
+
+# бюджет evidence для миграционных вопросов (п.2: score-буст + расширение)
+MIGRATION_BUDGET = 50000

@@ -97,7 +97,12 @@ def answer(search_result: dict, question: str, verbose: bool = False,
     import psycopg
     from pgvector.psycopg import register_vector
 
-    from config import RERANK_FILTER_ENABLED, RERANK_KEEP_FRAC, RERANK_MIN_KEEP
+    from config import (
+        RERANK_FILTER_ENABLED,
+        RERANK_KEEP_FRAC,
+        RERANK_MIN_KEEP,
+        MIGRATION_BUDGET,
+    )
 
     rows = search_result.get("rows", [])
     if not rows:
@@ -120,18 +125,46 @@ def answer(search_result: dict, question: str, verbose: bool = False,
     finally:
         conn.close()
 
-    evidence_blocks = []
-    budget_used = 0
+    # --- score-буст: доменные термины миграции (п.2) ---
+    from domain import signal_terms as domain_signal_terms
+    dterms = domain_signal_terms(question)
+
+    def _score_block(r: dict, text: str, base: float) -> tuple[float, float]:
+        """Бустированный скор: base + вес за пересечение с domain-терминами."""
+        boost = 0.0
+        if dterms:
+            low = text.lower()
+            boost = 2.0 * sum(1 for t in dterms if t.lower() in low)
+        return (base + boost, base)
+
+    # собрать (block, boosted_score, base_score)
+    candidates: list[tuple[dict, float, float]] = []
     for r in rows:
         eid = r["entity_id"]
         ent = entities.get(eid, {})
         text = chunks_map.get(eid, "")
         if not text:
             continue
+        base = float(r.get("score") or r.get("weight") or 0.0)
+        # проигнорируем нулевой base для expanded/graph: дадим им минимум
+        if base <= 0:
+            base = 0.01
+        boosted, _ = _score_block(r, text, base)
+        candidates.append((r, boosted, base))
+    # сортировка по boosted (score-буст, а не порядок), стабильно к base
+    candidates.sort(key=lambda x: (-x[1], -x[2]))
+
+    budget = MIGRATION_BUDGET if dterms else MAX_CHARS_BUDGET
+    evidence_blocks = []
+    budget_used = 0
+    for r, _boosted, _base in candidates:
+        eid = r["entity_id"]
+        ent = entities.get(eid, {})
+        text = chunks_map.get(eid, "")
         block = _build_evidence_block(ent, text, r.get("hop", 0))
         block_len = len(block["text"])
-        if budget_used + block_len > MAX_CHARS_BUDGET:
-            remaining = MAX_CHARS_BUDGET - budget_used
+        if budget_used + block_len > budget:
+            remaining = budget - budget_used
             if remaining > 500:
                 block["text"] = block["text"][:remaining] + "\n... [budget exceeded]"
                 evidence_blocks.append(block)
@@ -157,8 +190,8 @@ def answer(search_result: dict, question: str, verbose: bool = False,
 
     if verbose:
         from synthesize.focus import focus_of
-        print(f"[answer] focus={focus_of(question)['primary']}")
-        print(f"\n[answer] evidence blocks: {len(evidence_blocks)}, budget: {budget_used}/{MAX_CHARS_BUDGET}")
+        print(f"[answer] focus={focus_of(question)['primary']}, domain_terms={len(dterms)}")
+        print(f"\n[answer] evidence blocks: {len(evidence_blocks)}, budget: {budget_used}/{budget}")
         print(f"[answer] prompt length: {len(prompt)} chars")
 
     try:

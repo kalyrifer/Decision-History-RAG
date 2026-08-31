@@ -107,7 +107,8 @@ def search(query: str, no_expand: bool = False, k: int = 25, n_anchors: int = 10
             from synthesize.focus import focus_of
 
             foc = focus_of(query)
-            file_weight = 0.45 if foc["primary"] == "structure" else 0.3
+            has_structure = "structure" in (foc.get("aspects") or [foc["primary"]])
+            file_weight = 0.45 if has_structure else 0.3
             file_r = file_path_search(cur, search_text, k=k)
         if file_r:
             fused_d = {eid: [sc, ch] for eid, sc, ch in fused}
@@ -165,6 +166,22 @@ def search(query: str, no_expand: bool = False, k: int = 25, n_anchors: int = 10
             r["weight"] = round(weight, 3)
             r["channels"] = ["graph"]
             rows.append(r)
+
+        # date-relevance: слабый prior — понижаем вес событий вне окна (п.3)
+        from retrieve.date_relevance import extract_window, date_weight
+
+        dw = extract_window(query)
+        if dw:
+            for r in rows:
+                w = date_weight(r.get("created_at"), dw)
+                if r["score"] is not None:
+                    r["score"] = round(r["score"] * (0.5 + 0.5 * w), 4)
+                if r["weight"] is not None:
+                    r["weight"] = round(r["weight"] * (0.5 + 0.5 * w), 4)
+            rows.sort(key=lambda x: (
+                x.get("hop", 0) if x.get("hop", 0) > 0 else -1,
+                -(x.get("score") if x.get("score") is not None else x.get("weight", 0)),
+            ))
 
         with conn.cursor() as cur:
             cur.execute(

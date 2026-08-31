@@ -39,12 +39,16 @@ def focus_of(question: str) -> dict:
         "what_changed": len(_WHAT.findall(q)),
         "timeline": len(_TIMELINE.findall(q)),
     }
-    primary = max(scores, key=scores.get)
-    # если совпадений нет вовсе — считаем why (дефолтный decision-reconstruction)
-    if sum(scores.values()) == 0:
-        primary = "why"
+    # порог: аспект считается, если есть сигнал; без сигналов — дефолт why
+    aspects = [k for k, v in scores.items() if v > 0]
+    if not aspects:
+        aspects = ["why"]
+    # доминирующий аспект — первый в фиксированном порядке приоритета
+    order = ["structure", "what_changed", "timeline", "why"]
+    primary = next((a for a in order if a in aspects), "why")
     return {
         "primary": primary,
+        "aspects": aspects[:3],
         "scores": scores,
         "suggested_sections": _sections_for(primary),
     }

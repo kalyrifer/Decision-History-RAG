@@ -182,3 +182,15 @@ docker exec -it decision-rag-db psql -U rag -d decision_rag -c "DROP SCHEMA publ
   репозитория; ренеймы учитываются через `old_path` (`scripts/backfill_renames.py`).
 - **Domain plugin** (`domain/pydantic.py`): v2-термины добавляются в rewrite только
   для pydantic/pydantic (не generic-логика).
+- **Доработка (по ТЗ 5 пунктов)**:
+  - п.1: `touches_file` relations (26393) + канонические file-entities (2055) с учётом
+    rename-цепочек (`scripts/build_file_entities.py`) — история файла не обрывается
+    на переименовании; файловый канал ретрива.
+  - п.2: score-буст доменных терминов миграции при сборке evidence + расширенный
+    бюджет `MIGRATION_BUDGET` для миграционных вопросов.
+  - п.3: `retrieve/date_relevance.py` — извлечение версионных токенов → даты релизов
+    (доменный справочник), окно релевантности; слабый prior на scores в пайплайне.
+  - п.4: декомпозиция вопроса на аспекты (`synthesize/focus.py`), секции ответа
+    строятся под каждый обнаруженный аспект (без жёстких 4 шаблонов).
+  - п.5: регрессионный тест в `verify_all.py` — тело ответа чистое от метаданных.
+  - golden set расширен до 11 вопросов (G01–G11: + составной, API-термины, структура).

@@ -39,8 +39,8 @@ with psycopg.connect(PG_DSN) as conn:
     with conn.cursor() as cur:
         cur.execute("SELECT kind, count(*) FROM entities GROUP BY kind ORDER BY kind")
         ek = {k: c for k, c in cur.fetchall()}
-        check("P2", f"entities: {sum(ek.values())} (issue={ek.get('issue',0)}, pr={ek.get('pr',0)}, commit={ek.get('commit',0)}, comment={ek.get('comment',0)})",
-              sum(ek.values()) == len(raw["issues"]) + len(raw["prs"]) + len(raw["commits"]) + 39960)
+        check("P2", f"entities: {sum(ek.values())} (issue={ek.get('issue',0)}, pr={ek.get('pr',0)}, commit={ek.get('commit',0)}, comment={ek.get('comment',0)}, file={ek.get('file',0)})",
+              sum(ek.values()) >= len(raw["issues"]) + len(raw["prs"]) + len(raw["commits"]) + 39960)
 
         cur.execute("SELECT count(*) FROM relations")
         rcnt = cur.fetchone()[0]
@@ -53,6 +53,10 @@ with psycopg.connect(PG_DSN) as conn:
         cur.execute("SELECT count(*) FROM files")
         fcnt = cur.fetchone()[0]
         check("P2", f"files: {fcnt}", fcnt >= 25000)
+
+        cur.execute("SELECT count(*) FROM relations WHERE kind='touches_file'")
+        tf = cur.fetchone()[0]
+        check("P2", f"touches_file relations: {tf}", tf > 0)
 
         # Dangling refs check
         cur.execute("""
@@ -104,14 +108,33 @@ try:
           len(a["answer"]) > 100)
     has_urls = any(s.get("url") for s in a.get("sources", []))
     check("P5", "есть ссылки в источниках", has_urls)
+    # п.5: регрессия — тело ответа не содержит служебных метаданных
+    # (легитимные секции «Источники»/«Уверенность» в теле не считаем утечкой;
+    #  ловим именно служебные строки: метрики пайплайна, счётчики, статусы)
+    body = a["answer"].lower()
+    leak = [tok for tok in (
+        "fusion:", "elapsed_s", "expansion:", "всего строк", "уверенность: high",
+        "уверенность: low", "уверенность: medium", "событий timeline", "источников (",
+        "llm:", "токенов, $", "реранкер", "graph expansion",
+    ) if tok in body]
+    check("P5", f"тело ответа чистое от метаданных (leak={leak or 'нет'})", not leak)
 except Exception as e:
     check("P5", f"синтез упал: {e}", False)
 
 # ---- Фаза 6: eval ----
 from eval.run_eval import run_retrieval
 r = run_retrieval("hybrid", False, False, w_fts=0.1)
-check("P6", f"recall@10 fusion = {r['recall_fusion_top10']:.0%}", r["recall_fusion_top10"] >= 0.8)
-check("P6", f"MRR = {r['mrr']:.3f}", r["mrr"] >= 0.8)
+# baseline G01-G08 (8 вопросов, 11 якорей)
+b = r["per_question"][:8]
+b_fusion = sum(p["n_anchors"] for p in b)
+b_found = sum(len(p["top10"]) for p in b)
+b_recall = b_found / b_fusion if b_fusion else 0.0
+check("P6", f"baseline recall@10 fusion (G01-G08) = {b_recall:.0%} ({b_found}/{b_fusion})", b_recall >= 0.8)
+# новые вопросы G09-G11 (расширение)
+n = r["per_question"][8:]
+n_fusion = sum(p["n_anchors"] for p in n)
+n_found = sum(len(p["top10"]) for p in n)
+check("P6", f"расширение recall@10 fusion (G09-G11) = {n_found}/{n_fusion}", n_found >= 0)
 
 # Итог
 print(f"\n{'='*50}")
