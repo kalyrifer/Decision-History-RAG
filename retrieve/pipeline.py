@@ -100,6 +100,28 @@ def search(query: str, no_expand: bool = False, k: int = 25, n_anchors: int = 10
             search_text = rw["en"] + (" " + " ".join(rw["kw"]) if rw["kw"] else "")
 
         fused, vec_r, fts_r = hybrid_search(conn, search_text, k=k, mode=mode, w_fts=w_fts)
+
+        # файловый канал: поиск по путям для вопросов про структуру
+        with conn.cursor() as cur:
+            from retrieve.file_search import file_path_search
+            from synthesize.focus import focus_of
+
+            foc = focus_of(query)
+            file_weight = 0.45 if foc["primary"] == "structure" else 0.3
+            file_r = file_path_search(cur, search_text, k=k)
+        if file_r:
+            fused_d = {eid: [sc, ch] for eid, sc, ch in fused}
+            for eid, sc in file_r:
+                if eid in fused_d:
+                    fused_d[eid][0] += sc * file_weight
+                    fused_d[eid][1].add("file")
+                else:
+                    fused_d[eid] = [sc * file_weight, {"file"}]
+            fused = sorted(
+                [(eid, sc, ch) for eid, (sc, ch) in fused_d.items()],
+                key=lambda x: -x[1],
+            )
+
         fused = _collapse_comments(conn, fused)
         info = _fetch_info(conn, [eid for eid, _s, _c in fused])
 

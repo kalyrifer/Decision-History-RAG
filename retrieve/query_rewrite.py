@@ -11,7 +11,7 @@ sys.path.insert(0, ".")
 
 import httpx
 
-from config import OPENROUTER_API_KEY, OPENROUTER_BASE
+from config import OPENROUTER_API_KEY, OPENROUTER_BASE, TARGET_REPO
 
 CACHE_PATH = Path("data") / "rewrite_cache.json"
 DEADLINE_S = 6.0
@@ -143,6 +143,13 @@ def rewrite(query: str) -> dict:
                 print(f"[rewrite] fallback на исходный запрос; последняя ошибка: {last_err}")
     except Exception as e:
         print(f"[rewrite] fallback на исходный запрос: {type(e).__name__}: {str(e)[:80]}")
+
+    # enrich with domain signal terms (per-repo vocabulary, not generic)
+    from domain import signal_terms as domain_signal_terms
+    dterms = domain_signal_terms(query, TARGET_REPO)
+    if dterms:
+        seen = set(k.lower() for k in result["kw"])
+        result["kw"].extend(t for t in dterms if t.lower() not in seen)
 
     _cache[query] = result
     disk[query] = result

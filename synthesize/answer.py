@@ -92,9 +92,12 @@ def _extract_urls(text: str) -> list[str]:
     return re.findall(r"https://github\.com/[^\s)>\]\"]+", text)
 
 
-def answer(search_result: dict, question: str, verbose: bool = False) -> dict:
+def answer(search_result: dict, question: str, verbose: bool = False,
+           noise_filter: bool | None = None) -> dict:
     import psycopg
     from pgvector.psycopg import register_vector
+
+    from config import RERANK_FILTER_ENABLED, RERANK_KEEP_FRAC, RERANK_MIN_KEEP
 
     rows = search_result.get("rows", [])
     if not rows:
@@ -136,9 +139,25 @@ def answer(search_result: dict, question: str, verbose: bool = False) -> dict:
         evidence_blocks.append(block)
         budget_used += block_len
 
+    use_filter = RERANK_FILTER_ENABLED if noise_filter is None else noise_filter
+    if use_filter and len(evidence_blocks) > RERANK_MIN_KEEP:
+        from retrieve.rerank import filter_candidates
+
+        if verbose:
+            print(f"[answer] реранкер-фильтр: было {len(evidence_blocks)} блоков")
+        cands = [dict(b, message=b.get("title", "")) for b in evidence_blocks]
+        kept = filter_candidates(question, cands, keep_frac=RERANK_KEEP_FRAC,
+                                 min_keep=RERANK_MIN_KEEP)
+        kept_ids = {id(b) for b in kept}
+        evidence_blocks = [b for b in evidence_blocks if id(b) in kept_ids]
+        if verbose:
+            print(f"[answer] реранкер-фильтр: осталось {len(evidence_blocks)}")
+
     prompt = build_prompt(evidence_blocks, question)
 
     if verbose:
+        from synthesize.focus import focus_of
+        print(f"[answer] focus={focus_of(question)['primary']}")
         print(f"\n[answer] evidence blocks: {len(evidence_blocks)}, budget: {budget_used}/{MAX_CHARS_BUDGET}")
         print(f"[answer] prompt length: {len(prompt)} chars")
 

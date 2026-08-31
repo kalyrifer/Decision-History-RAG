@@ -101,25 +101,25 @@ def main() -> None:
     st.subheader("Ответ")
     st.markdown(result["answer"])
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Уверенность", result.get("confidence", "—"))
-    c2.metric("Источников", len(result.get("sources", [])))
-    c3.metric("Событий timeline", len(result.get("timeline", [])))
+    with st.expander("Технические детали"):
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Уверенность", result.get("confidence", "—"))
+        c2.metric("Источников", len(result.get("sources", [])))
+        c3.metric("Событий timeline", len(result.get("timeline", [])))
+        stats = result.get("llm_stats", {})
+        if stats:
+            st.caption(f"LLM: {stats.get('total_tokens', 0)} токенов")
 
-    st.subheader("Источники")
-    for s in result.get("sources", []):
-        role = f" [{s.get('role', '')}]" if s.get("role") else ""
-        st.markdown(f"- [{s.get('kind', '')} {s.get('number', '')}]({s['url']}){role}")
+        st.subheader("Источники")
+        for s in result.get("sources", []):
+            role = f" [{s.get('role', '')}]" if s.get("role") else ""
+            st.markdown(f"- [{s.get('kind', '')} {s.get('number', '')}]({s['url']}){role}")
 
-    if result.get("timeline"):
-        st.subheader("Timeline")
-        for t in result["timeline"][:25]:
-            title = (t.get("title") or "")[:70]
-            st.markdown(f"- **{t['date']}** · {t['kind']} {t['native_id']} — {title}")
-
-    stats = result.get("llm_stats", {})
-    if stats:
-        st.caption(f"LLM: {stats.get('total_tokens', 0)} токенов")
+        if result.get("timeline"):
+            st.subheader("Timeline")
+            for t in result["timeline"][:25]:
+                title = (t.get("title") or "")[:70]
+                st.markdown(f"- **{t['date']}** · {t['kind']} {t['native_id']} — {title}")
 
 
 if __name__ == "__main__":

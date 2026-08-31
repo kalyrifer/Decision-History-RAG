@@ -112,19 +112,19 @@ def main() -> None:
                 id_map[(k, nid)] = eid
         Path("data").joinpath("id_map.count").write_text(str(len(id_map)), encoding="utf-8")
 
-        file_rows = []
+file_rows = []
         for sha, r in commits.items():
             cid = id_map[("commit", sha)]
             for f in r["files"]:
-                file_rows.append((cid, f["path"], f["status"], f["add"], f["del"]))
+                file_rows.append((cid, f["path"], f["status"], f["add"], f["del"], f.get("old_path")))
         with conn.cursor() as cur:
             for i in range(0, len(file_rows), 5000):
                 chunk = file_rows[i:i + 5000]
-                args = ",".join(cur.mogrify("(%s,%s,%s,%s,%s)", fr) for fr in chunk)
+                args = ",".join(cur.mogrify("(%s,%s,%s,%s,%s,%s)", fr) for fr in chunk)
                 cur.execute(
-                    "INSERT INTO files (entity_id,path,status,add_count,del_count) VALUES "
+                    "INSERT INTO files (entity_id,path,status,add_count,del_count,old_path) VALUES "
                     + args
-                    + " ON CONFLICT (entity_id,path) DO NOTHING"
+                    + " ON CONFLICT (entity_id,path) DO UPDATE SET old_path=EXCLUDED.old_path"
                 )
         conn.commit()
         log(f"файлов записано: {len(file_rows)}")

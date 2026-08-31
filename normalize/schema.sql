@@ -2,7 +2,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS entities (
     id BIGSERIAL PRIMARY KEY,
-    kind TEXT NOT NULL CHECK (kind IN ('issue', 'pr', 'comment', 'commit')),
+    kind TEXT NOT NULL CHECK (kind IN ('issue', 'pr', 'comment', 'commit', 'file')),
     native_id TEXT NOT NULL,
     title TEXT,
     body TEXT,
@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS entities (
     UNIQUE (kind, native_id)
 );
 
+-- миграция: разрешить kind='file' на уже созданной таблице
+ALTER TABLE entities DROP CONSTRAINT IF EXISTS entities_kind_check;
+ALTER TABLE entities ADD CONSTRAINT entities_kind_check
+    CHECK (kind IN ('issue', 'pr', 'comment', 'commit', 'file'));
+
 CREATE INDEX IF NOT EXISTS idx_entities_kind_native ON entities (kind, native_id);
 CREATE INDEX IF NOT EXISTS idx_entities_created ON entities (created_at);
 
@@ -26,8 +31,11 @@ CREATE TABLE IF NOT EXISTS files (
     status TEXT,
     add_count INTEGER,
     del_count INTEGER,
+    old_path TEXT,
     PRIMARY KEY (entity_id, path)
 );
+
+ALTER TABLE files ADD COLUMN IF NOT EXISTS old_path TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_files_path ON files (path);
 

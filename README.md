@@ -170,9 +170,15 @@ docker exec -it decision-rag-db psql -U rag -d decision_rag -c "DROP SCHEMA publ
 
 ## Известные замечания
 
-- **Реранкер (bge-reranker-base) НЕ включён** — абляция показала деградацию
-  (recall@10 94%→50%), см. `eval/rerank_ablation.py` и PLAN.md (Фаза 7).
+- **Реранкер (bge-reranker-base)** в режиме пересортировки (re-rank) НЕ включён —
+  абляция показала деградацию (recall@10 94%→50%), см. `eval/rerank_ablation.py`.
+  Как **фильтр шума** (относительный квантильный порог) доступен опционально:
+  `RERANK_FILTER_ENABLED=True` в config.py или `cli.py ask --filter-noise`.
 - **GitHub токен** нужен только для ингеста; для ответов на готовых данных — нет.
 - **Gemini API** не работает из РФ (region-block) — в стеке используется OpenRouter.
 - Эмбеддинги: `BAAI/bge-small-en-v1.5` (384 dim), CPU. Реранкер-модель (~1.1 ГБ)
   скачивается в кэш HuggingFace автоматически при первом использовании.
+- **Файловый канал ретрива** (`retrieve/file_search.py`): для вопросов про структуру
+  репозитория; ренеймы учитываются через `old_path` (`scripts/backfill_renames.py`).
+- **Domain plugin** (`domain/pydantic.py`): v2-термины добавляются в rewrite только
+  для pydantic/pydantic (не generic-логика).

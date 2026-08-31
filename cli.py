@@ -98,23 +98,24 @@ def cmd_ask(args) -> None:
         search_pipeline.print_table(res)
         return
 
-    result = synth_answer.answer(res, args.query, verbose=args.verbose)
-    print(f"\n{'='*80}")
-    print(f"Вопрос: {result['question']}")
-    print(f"{'='*80}\n")
+    result = synth_answer.answer(res, args.query, verbose=args.verbose,
+                                 noise_filter=getattr(args, "filter_noise", None))
     print(result["answer"])
-    print(f"\n{'='*80}")
-    print(f"Уверенность: {result['confidence']}")
-    print(f"Источники ({len(result['sources'])}):")
-    for s in result["sources"]:
-        tag = f" [{s['role']}]" if s.get("role") else ""
-        print(f"  {s['url']}{tag}")
-    if result["timeline"]:
-        print(f"\nTimeline ({len(result['timeline'])} событий):")
-        for t in result["timeline"][:20]:
-            print(f"  {t['date']}  {t['kind']:<7} {t['native_id']:<10} {(t['title'] or '')[:60]}")
-    stats = result["llm_stats"]
-    print(f"\nLLM: {stats['total_tokens']} токенов, ${stats['total_cost_usd']:.4f}")
+
+    if args.verbose:
+        print(f"\n{'='*80}")
+        print(f"Вопрос: {result['question']}")
+        print(f"Уверенность: {result['confidence']}")
+        print(f"Источники ({len(result['sources'])}):")
+        for s in result["sources"]:
+            tag = f" [{s['role']}]" if s.get("role") else ""
+            print(f"  {s['url']}{tag}")
+        if result["timeline"]:
+            print(f"\nTimeline ({len(result['timeline'])} событий):")
+            for t in result["timeline"][:20]:
+                print(f"  {t['date']}  {t['kind']:<7} {t['native_id']:<10} {(t['title'] or '')[:60]}")
+        stats = result["llm_stats"]
+        print(f"\nLLM: {stats['total_tokens']} токенов, ${stats['total_cost_usd']:.4f}")
     if args.json:
         print("\n--- JSON ---")
         print(json.dumps(result, ensure_ascii=False, indent=1, default=str))
@@ -150,6 +151,8 @@ def main() -> None:
                        help="только поиск, без LLM")
     p_ask.add_argument("--json", action="store_true")
     p_ask.add_argument("--verbose", action="store_true")
+    p_ask.add_argument("--filter-noise", action="store_true", dest="filter_noise",
+                       help="реранкер-фильтр шума (bge-reranker-base)")
     p_ask.set_defaults(func=cmd_ask)
     sub.add_parser("status", help="прогресс ингеста").set_defaults(func=cmd_status)
     args = ap.parse_args()

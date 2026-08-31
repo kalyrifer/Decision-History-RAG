@@ -71,10 +71,50 @@
   status: draft
 
 - id: G08
-  question: "Зачем в pydantic отдельный StrictBool — чем обычный bool не устроил?"
+  question: Зачем в pydantic отдельный StrictBool — чем обычный bool не устроил?
   expected_anchors:
     - {type: issue, number: 579, url: "https://github.com/pydantic/pydantic/issues/579"}
   expected_answer_summary: >-
     bool в Python является подклассом int, из-за чего lax-валидация пропускала числа там, где ожидался флаг;
     StrictBool отделил настоящие boolean от числовых (#579).
+  status: draft
+
+- id: G09
+  question: Какие изменения были внесены в Pydantic при переходе с V1 на V2, и как это отражено в истории коммитов и структуре репозитория?
+  expected_anchors:
+    - {type: pr, number: 6291, url: "https://github.com/pydantic/pydantic/pull/6291"}
+    - {type: pr, number: 4492, url: "https://github.com/pydantic/pydantic/pull/4492"}
+    - {type: pr, number: 5379, url: "https://github.com/pydantic/pydantic/pull/5379"}
+    - {type: pr, number: 5689, url: "https://github.com/pydantic/pydantic/pull/5689"}
+    - {type: pr, number: 5331, url: "https://github.com/pydantic/pydantic/pull/5331"}
+  expected_answer_summary: >-
+    v2: pydantic-core (Rust) вместо Cython, вынос BaseSettings в pydantic-settings (#4492),
+    приватный слой pydantic/_internal(), замена @validator/@root_validator на
+    @field_validator (#5379)/@model_validator, AnalyzedType→TypeAdapter (#5689),
+    @serializer→@field_serializer (#5331), model_dump/model_dump_json вместо dict/json,
+    ConfigDict, model_config=ConfigDict(...).
+  status: draft
+
+- id: G10
+  question: Какие ключевые API-термины появились в Pydantic V2 (field_validator, TypeAdapter, model_dump)?
+  expected_anchors:
+    - {type: pr, number: 5379, url: "https://github.com/pydantic/pydantic/pull/5379"}
+    - {type: pr, number: 5689, url: "https://github.com/pydantic/pydantic/pull/5689"}
+    - {type: pr, number: 5331, url: "https://github.com/pydantic/pydantic/pull/5331"}
+  expected_answer_summary: >-
+    field_validator, model_validator, TypeAdapter, field_serializer, model_dump, model_dump_json,
+    ConfigDict, computed_field, model_config, validate_call, pydantic.v1. Большинство введено
+    через PR: #5379 (@model_validator), #5689 (TypeAdapter), #5331 (field_serializer).
+  status: draft
+
+- id: G11
+  question: Как изменилась структура репозитория pydantic при переходе на V2?
+  expected_anchors:
+    - {type: pr, number: 4492, url: "https://github.com/pydantic/pydantic/pull/4492"}
+    - {type: pr, number: 12415, url: "https://github.com/pydantic/pydantic/pull/12415"}
+    - {type: issue, number: 4790, url: "https://github.com/pydantic/pydantic/issues/4790"}
+  expected_answer_summary: >-
+    V2: вынос BaseSettings в pydantic-settings (#4492), pydantic-core как Rust-ядро
+    (#4790), затем обратный импорт в монорепо (#12415), появление pydantic/_internal/
+    (приватный слой генерации схем), pydantic/deprecated/, pydantic/v1.
   status: draft

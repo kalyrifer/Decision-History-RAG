@@ -29,3 +29,9 @@ FTS_WEIGHT = 0.1  # вес FTS-канала в RRF fusion (понижен: FTS �
 
 RERANK_MODEL = "BAAI/bge-reranker-base"
 RERANK_DEVICE = "cpu"  # "cuda" при наличии GPU-версии torch
+
+# Реранкер как ФИЛЬТР шума (не ре-ранк): отсекает низко-семантические события
+# по относительному квантильному порогу. По умолчанию выключен (на CPU медленно).
+RERANK_FILTER_ENABLED = False
+RERANK_KEEP_FRAC = 0.6   # доля кандидатов, остающаяся после фильтра
+RERANK_MIN_KEEP = 5      # минимум выживших

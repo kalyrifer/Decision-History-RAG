@@ -97,9 +97,9 @@ def extract() -> int:
     numstat = parse_stat_pass(
         run_git("log", ref, "--root", "--numstat", "--no-renames", "--pretty=format:%H")
     )
-    log("проход 3/3: name-status (статусы A/M/D)")
+    log("проход 3/3: name-status (статусы A/M/D/R с rename-детекцией)")
     namestat = parse_stat_pass(
-        run_git("log", ref, "--root", "--name-status", "--no-renames", "--pretty=format:%H")
+        run_git("log", ref, "--root", "--name-status", "--find-renames", "--pretty=format:%H")
     )
 
     records = []
@@ -118,9 +118,18 @@ def extract() -> int:
             for line in namestat.get(sha, []):
                 p = line.split("\t")
                 if len(p) >= 2:
-                    path = "\t".join(p[1:])
-                    add, dele = counts.get(path, (None, None))
-                    files.append({"path": path, "status": p[0], "add": add, "del": dele})
+                    status = p[0]
+                    if status.startswith("R") and len(p) >= 3:
+                        old_path, new_path = p[1], p[2]
+                        add, dele = counts.get(new_path, (None, None))
+                        files.append({
+                            "path": new_path, "status": "R",
+                            "old_path": old_path, "add": add, "del": dele,
+                        })
+                    else:
+                        path = "\t".join(p[1:])
+                        add, dele = counts.get(path, (None, None))
+                        files.append({"path": path, "status": status, "add": add, "del": dele})
         records.append(
             {
                 "kind": "commit",
